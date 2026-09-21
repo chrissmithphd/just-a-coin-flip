@@ -250,4 +250,4 @@ Whether this reflects true randomness or merely the market's ability to aggregat
 ---
 
 **Analysis completed:** 2026-09-21  
-**Code repository:** https://github.com/chrissmithphd/stats
+**Code repository:** https://github.com/chrissmithphd/just-a-coin-flip

@@ -92,8 +92,8 @@ Each test compares the observed statistic against the distribution obtained from
 
 ```bash
 # Clone the repository
-git clone https://github.com/chrissmithpdh/stats.git
-cd stats
+git clone https://github.com/chrissmithphd/just-a-coin-flip.git
+cd just-a-coin-flip
 
 # Create virtual environment
 python3 -m venv venv
@@ -186,9 +186,9 @@ MIT License - see LICENSE file for details.
 
 ## Contact
 
-**Chris Smith** — [@chrissmithpdh](https://github.com/chrissmithpdh)
+**Chris Smith** — [@chrissmithphd](https://github.com/chrissmithphd)
 
-Project Link: [https://github.com/chrissmithpdh/stats](https://github.com/chrissmithpdh/stats)
+Project Link: [https://github.com/chrissmithphd/just-a-coin-flip](https://github.com/chrissmithphd/just-a-coin-flip)
 
 ---
 
