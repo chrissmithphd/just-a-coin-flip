@@ -152,6 +152,32 @@ Intuitively, "momentum" or "hot hand" effects would produce longer winning strea
 
 **Result:** Streak distributions in the real NFL are statistically indistinguishable from Bernoulli simulations. No evidence for momentum (excess long streaks) or mean reversion (excess short streaks).
 
+### Can Recent History Beat the Market?
+
+A winning streak certainly *feels* like information. After three straight wins, intuition says a team is "hot" — the next game should be easier to predict.
+
+But is it information the betting market missed?
+
+We gave a model the market's prediction for each game. Then we told it about the team's recent performance: how they did relative to expectations in their last game, their last three games, their current streak length. The question: **does that extra information actually improve predictions?**
+
+We tested this properly — using only past games to predict future games (expanding walk-forward validation), never training on outcomes that hadn't happened yet. Five models:
+
+1. **Market alone** — just use the closing line probability
+2. **+ Last game** — add how the team performed vs. expectations last game  
+3. **+ Last 3 games** — add their 3-game trend
+4. **+ Last 5 games** — add their 5-game trend
+5. **+ All recent history** — everything (previous win/loss, streak length, trends)
+
+![Market vs History](output/analysis/market_vs_history.png)
+
+*Figure: Change in out-of-sample log loss when adding recent team history to market probability. Bars show real NFL (brown = worse predictions). Gray bands show the 95% range from pure chance (Monte Carlo simulations). Lower is better — but all additions make predictions **worse**, not better.*
+
+**Result:** **The market already knew.** Adding a team's recent performance — last game result, rolling averages, streak length — makes predictions **worse**, not better. The model overfits to noise. The real NFL behaves exactly like the Monte Carlo simulations: recent history adds no signal beyond what the closing line already contains.
+
+We're not testing whether recent performance *correlates* with future outcomes (it does, slightly). We're testing whether it *improves prediction* after you already know what the market thinks. It doesn't.
+
+The wins and losses matter. They're just not telling us anything the market doesn't already know.
+
 ### Test 2: Team-Level Autocorrelation
 
 Do teams that win game $t$ have a higher-than-$p_{t+1}$ probability of winning game $t+1$, after controlling for $p_{t+1}$? We compute lag-$k$ autocorrelation of outcomes for each team, then average across teams:
