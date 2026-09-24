@@ -11,9 +11,7 @@ Across calibration tests, upset frequency, winning streaks, team autocorrelation
 This is **not** a test of whether sports outcomes are predictable — markets clearly predict better than chance (home teams win ~56%, not 50%). Instead, we test whether anything remains predictable **after** you condition on what the market already knows.
 
 $$
-\boxed{
-Y_i^{\text{NFL}} \overset{?}{\sim} Y_i^* \sim \operatorname{Bernoulli}(p_i)
-}
+Y_i^{\text{NFL}} \overset{?}{\sim} Y_i^* \sim \text{Bernoulli}(p_i)
 $$
 
 where $p_i$ is the vig-adjusted closing moneyline probability for game $i$.
@@ -26,7 +24,7 @@ For each of 2,946 NFL games (2011–2021 seasons, excluding Super Bowls), we obs
 - The **pregame market probability** $p_i$ from the closing moneyline (vig-adjusted)
 - The **actual outcome** $Y_i \in \\{0, 1\\}$
 
-We generate synthetic histories by **keeping** $p_i$ but **replacing** $Y_i$ with $Y_i^* \sim \operatorname{Bernoulli}(p_i)$:
+We generate synthetic histories by **keeping** $p_i$ but **replacing** $Y_i$ with $Y_i^* \sim \text{Bernoulli}(p_i)$:
 
 ![Experiment Design](output/diagrams/experiment_design.png)
 
@@ -112,7 +110,7 @@ One might hypothesize that heavy favorites are **overvalued** (upset more than $
 For each Monte Carlo simulation $m = 1, \ldots, 10{,}000$, we generate a complete NFL season history:
 
 $$
-Y_i^{*(m)} \sim \operatorname{Bernoulli}(p_i), \qquad i = 1, \ldots, 2{,}946
+Y_i^{*(m)} \sim \text{Bernoulli}(p_i), \qquad i = 1, \ldots, 2{,}946
 $$
 
 Each simulation uses the **exact same** $p_i$ values from the real NFL — same teams, same dates, same market probabilities, same chronological sequence. Only the realized winner is replaced by a coin flip weighted by $p_i$.
@@ -232,7 +230,7 @@ Both are within ±2σ of Monte Carlo expectations. No evidence for momentum or r
 Return to the central question:
 
 $$
-\boxed{Y_i \mid p_i \overset{?}{\sim} \operatorname{Bernoulli}(p_i)}
+Y_i \mid p_i \overset{?}{\sim} \text{Bernoulli}(p_i)
 $$
 
 **Evidence consistent with the Bernoulli null:**
@@ -320,7 +318,7 @@ Average vig: **3.83%** (median: 3.79%, range: 1.3%–41.2%).
 
 ### Monte Carlo Simulation
 - **Simulations:** 10,000 complete NFL histories
-- **Method:** For each simulation $m$ and game $i$, draw $Y_i^{*(m)} \sim \operatorname{Bernoulli}(p_i)$
+- **Method:** For each simulation $m$ and game $i$, draw $Y_i^{*(m)} \sim \text{Bernoulli}(p_i)$
 - **Seed:** 42 (reproducible)
 - **Compute time:** ~3 minutes on standard CPU
 
