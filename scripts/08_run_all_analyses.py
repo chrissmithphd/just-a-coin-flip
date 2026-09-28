@@ -62,13 +62,18 @@ def main():
     output_dir = Path('output/analysis')
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Analysis pipeline
+    # Analysis pipeline. Order matters: the simulator must run before analyses
+    # that consume its output, and the market-vs-history plot consumes its data.
     analyses = [
         ('scripts/03_bernoulli_simulator.py', 'Monte Carlo Simulation (10,000 histories)'),
         ('scripts/04_analysis_calibration.py', 'Calibration Analysis'),
         ('scripts/05_analysis_upsets.py', 'Upsets Analysis'),
-        ('scripts/06_analysis_team_timeseries.py', 'Team Time Series Analysis'),
-        ('scripts/07_analysis_residuals.py', 'Residuals Analysis'),
+        ('scripts/06_analysis_team_timeseries.py', 'Team Time Series (raw vs residual)'),
+        ('scripts/07_analysis_residuals.py', 'Game-Level Residuals Analysis'),
+        ('scripts/09_create_experiment_diagram.py', 'Experiment Design Diagram'),
+        ('scripts/10_market_vs_history.py', 'Market vs History (walk-forward)'),
+        ('scripts/11_plot_market_vs_history.py', 'Market vs History Plot'),
+        ('scripts/12_betting_implications.py', 'Betting Implications'),
     ]
 
     results = []

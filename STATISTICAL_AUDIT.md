@@ -7,27 +7,38 @@
 
 ## RESOLUTION (2026-09-28)
 
-All four errors have been fixed in `scripts/06_analysis_team_timeseries.py` and
-`scripts/07_analysis_residuals.py`. Each statistic is now computed within every
-simulated league (one value per league); maxima use the distribution of
-per-league maxima. The analyses were rerun and the README and RESULTS.md were
-updated.
+The four errors were fixed in two stages, and the fix revealed a *second*,
+subtler specification error that changed the final conclusion.
 
-**Correcting the errors changed the conclusions:**
+**Stage 1 — pooling bug (this audit).** The Monte Carlo statistics were being
+pooled across team x simulation, inflating the null variance ~6x. Fixed by
+computing each statistic within every simulated league (one value per league);
+maxima use the distribution of per-league maxima. This made the raw win/loss
+autocorrelation and streak counts appear significantly elevated.
 
-| Statistic | Buggy result | Corrected result |
-|-----------|--------------|------------------|
-| Team autocorr lag 1 | 68th pct, "consistent" | 99.7th pct, $p = 0.007$ — **significant** |
-| Team autocorr lag 4 | 70th pct, "consistent" | 99.7th pct, $p = 0.006$ — **significant** |
-| Win-streak count | "≈ equal averages" | 1,338 vs 1,408, $p < 0.001$ — **significant** |
-| Longest win streak | "within range (up to 41)" | 21 vs typical 16, 91.6th pct — elevated, not significant |
-| Residual after loss | "within ±2σ" | 2.7th pct, $p = 0.053$ — borderline |
+**Stage 2 — raw vs. residual (found in review of Stage 1).** The corrected
+Stage-1 test still measured *raw* win/loss autocorrelation. Because the betting
+line moves after every game (up after a win, down after a loss), raw win/loss
+sequences are mechanically correlated with their own line — this is the market
+updating, not momentum it missed. The correct statistic subtracts each game's
+probability first (residual autocorrelation, $r_i = Y_i - p_i$).
 
-The pooling bug had inflated the null variance (~6x), masking genuine team
-persistence. The corrected finding: the real NFL shows small but significant
-persistence beyond the Bernoulli model, though it is too small to improve
-out-of-sample prediction (walk-forward test) or beat the betting margin.
-Calibration, upset, and out-of-sample prediction results were unaffected.
+**Final result after both corrections:**
+
+| Statistic | Result |
+|-----------|--------|
+| Streak counts (raw) | Real NFL significantly streakier, $p < 0.001$ — streaks are real |
+| Autocorr lag 1 (raw) | 99.7th pct, $p = 0.007$ — streaks are real |
+| Autocorr lag 1 (residual) | 80.0th pct, $p = 0.40$ — **not** significant |
+| Autocorr lags 2–5 (residual) | none significant |
+| Recent history (walk-forward, OOS) | no predictive improvement |
+
+**Conclusion:** NFL streaks are genuinely real, but they are fully explained by
+the market's dynamic line. Once each game's probability is removed, no
+predictable persistence remains, and recent history yields no out-of-sample
+edge. Calibration, upset, and out-of-sample prediction results were unaffected
+throughout. Full explanation in `docs/persistence_explained.md`; both team-level
+tests are implemented in `scripts/06_analysis_team_timeseries.py`.
 
 The remainder of this document is the original audit, retained for the record.
 

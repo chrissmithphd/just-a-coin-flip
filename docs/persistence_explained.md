@@ -1,136 +1,119 @@
-# The Team-Persistence Finding, Explained and Verified
+# Streaks Are Real — But the Market Already Knows
 
-This note explains, in plain terms, the one place where the real NFL departs
-from the "weighted coin flip" model, how to read the numbers, and what the bug
-was that originally hid the effect. Every number here is reproduced by
-`scripts/13_verify_persistence.py`.
+This note explains the one place NFL results *look* like they beat a coin flip,
+why that appearance is misleading, and how the correct test resolves it. Every
+number is produced by `scripts/06_analysis_team_timeseries.py`.
 
 ---
 
 ## The finding in one sentence
 
-After a win, an NFL team is a few percentage points more likely to win its next
-game than the betting-market probability alone would predict — a small but
-statistically real "persistence" that the market does not fully price in.
+NFL teams are genuinely streakier than independent coin flips, but the streakiness
+is entirely explained by the betting line moving after each game — so there is no
+predictable edge left once you condition on the market probability.
 
 ---
 
-## How to read the two numbers
+## Step 1: The streaks are real
 
-We measure a statistic on the real NFL, then measure the identical statistic on
-each of 10,000 simulated leagues where every game is a coin flip weighted by the
-market probability. Those 10,000 values are the "what random looks like"
-distribution.
+Compared with 10,000 simulated leagues of independent coin flips weighted by the
+same closing lines, the real NFL has:
 
-For lag-1 team autocorrelation:
+| Statistic | Real NFL | Random leagues | Percentile | p (two-sided) |
+|---|---|---|---|---|
+| Winning-streak count | 1,338 | 1,408 | 0.0% | < 0.001 |
+| Losing-streak count | 1,346 | 1,410 | 0.1% | 0.001 |
+| Raw lag-1 autocorrelation | 0.059 | 0.016 | 99.7% | 0.007 |
 
-| Quantity | Value |
-|---|---|
-| Real NFL | 0.059 |
-| Average of the 10,000 random leagues | 0.016 |
-| Standard deviation of the random leagues | 0.015 |
-| Percentile of the real value | 99.7% |
-| Two-sided p-value | 0.007 |
+Fewer streak *segments* across the same number of games means each run is longer.
+By these raw measures momentum is unmistakable — teams cluster wins and losses
+more than chance.
 
-**Percentile = 99.7%** means 99.7% of the random leagues scored *lower* than the
-real NFL. Only 0.3% scored higher. The real league sits at the extreme top of
-the random pile — it is more persistent than almost any coin-flip league.
+## Step 2: Why "raw" is the wrong lens
 
-**p-value = 0.007** restates the same fact as a probability: if the coin-flip
-model were true, a value this far from the middle (in either direction) would
-occur about 0.7% of the time. Percentile is *where* the real value sits;
-p-value is *how surprising* that position is.
+The betting line is not fixed. **It moves after every game**: a win pushes a
+team's next-game probability up, a loss pushes it down. So a team's win/loss
+string is automatically correlated with its own drifting line, even if nothing
+"extra" is going on.
 
-They are linked: 99.7th percentile → 0.3% above → doubling for a two-sided test
-→ p ≈ 0.006–0.007.
-
-The random average is 0.016, not 0, because strong teams carry a high win
-probability across many games; even pure coin flips weighted by those
-probabilities produce slight positive correlation. The real signal is the
-*excess* over that baseline: 0.059 − 0.016 ≈ **0.04**.
-
----
-
-## What an autocorrelation of 0.059 actually means
-
-Autocorrelation is a coefficient from −1 to +1, not a probability. But for a
-win/loss sequence it has an exact, intuitive translation:
+Write each outcome as market probability plus surprise, $Y_t = p_t + r_t$. The
+raw game-to-game covariance expands into four pieces:
 
 $$
-\rho_1 = P(\text{win} \mid \text{won last game}) - P(\text{win} \mid \text{lost last game})
+\text{Cov}(Y_t, Y_{t+1}) = \underbrace{\text{Cov}(p_t, p_{t+1})}_{\text{line drifts smoothly}}
++ \underbrace{\text{Cov}(r_t, p_{t+1})}_{\text{line reacts to results}}
++ \text{Cov}(p_t, r_{t+1}) + \underbrace{\text{Cov}(r_t, r_{t+1})}_{\text{true momentum}}
 $$
 
-So 0.059 means a team is about **6 percentage points** more likely to win after
-a win than after a loss. About 1.6 points of that is the market-driven baseline
-(good teams stay good), leaving roughly **4 points of genuine streakiness**
-beyond what the price reflects.
+Only the last term — do *surprises* predict future *surprises* — is momentum the
+market missed. The middle term, $\text{Cov}(r_t, p_{t+1})$, is just the market
+raising the line after a win. The raw test adds these together and misreads the
+sum as momentum.
 
-This identity is not just theory. `scripts/13_verify_persistence.py` computes
-both quantities for every team and confirms they are equal:
+## Step 3: Remove the line, and it disappears
 
-```
-Packers      autocorr=+0.0062   gap=+0.0062
-Saints       autocorr=+0.0201   gap=+0.0201
-Ravens       autocorr=-0.0065   gap=-0.0065
-Buccaneers   autocorr=+0.2287   gap=+0.2283
-```
+Subtract each game's probability before measuring correlation. Instead of "did
+the team win?" ask "did the team win **more than the line expected**?" — the
+residual $r_i = Y_i - p_i$ — and test whether that predicts the next game.
 
-Running the whole test on the win-rate gap instead of the autocorrelation gives
-the same answer (real 0.0585, 99.7th percentile, p = 0.007) — an independent
-confirmation through a different statistic.
+| Lag | Raw autocorr | Raw pct | Residual autocorr | Residual pct | Residual p |
+|---|---|---|---|---|---|
+| 1 | 0.059 | 99.7% | 0.012 | 80.0% | 0.401 |
+| 2 | 0.010 | 23.1% | −0.028 | 3.8% | 0.077 |
+| 3 | 0.037 | 87.5% | −0.010 | 25.7% | 0.515 |
+| 4 | 0.064 | 99.7% | 0.022 | 90.9% | 0.182 |
+| 5 | 0.044 | 95.8% | 0.008 | 67.1% | 0.658 |
 
-**Lags are spacings, not additions.** "Lag-4" means a game and the one four
-games later; it is the same sequence measured at a wider spacing, not a separate
-chance to add on. Lag-4 is also elevated because a hot or cold stretch spans
-several games, so games one apart and four apart both look correlated. The
-measurements overlap; they describe one tendency, not several to sum.
+The raw column screams momentum. The residual column shows nothing — no lag is
+significant once the market line is removed. The apparent persistence *was* the
+market pricing each streak in real time.
 
----
+`output/analysis/team_autocorrelation.png` shows this as two histograms: raw
+(real NFL at the far right, 99.7th percentile) and residual (real NFL back in the
+middle of the random cloud, 80th percentile).
 
-## What the bug was
+## Step 4: The predictive confirmation
 
-The test averages a per-team statistic across the ~36 teams. The real NFL gives
-one number: average each team's autocorrelation, done.
-
-The **correct** null does the same thing inside each simulated league: for
-league *m*, average its teams' autocorrelations into a single value $T_m$. That
-gives 10,000 league-level values, and we ask where the real value falls among
-them.
-
-The **bug** threw every team from every simulation into one giant bucket —
-about 36 × 10,000 ≈ 360,000 individual team values — and compared the real
-league-average against that pool.
-
-Why that is wrong: the pool measures the spread of *individual team-seasons*,
-which is large. The real number is an *average of 36 teams*, whose spread is
-much smaller — smaller by roughly $\sqrt{36} = 6$. Using the pool's wide spread
-as the yardstick makes an extreme value look ordinary.
-
-`scripts/13_verify_persistence.py` reproduces this exactly:
-
-| | Std used as yardstick | Real value lands at |
-|---|---|---|
-| Bugged pooling (360k values) | 0.098 | 68.2nd percentile ("looks normal") |
-| Correct per-league null (10k values) | 0.015 | 99.7th percentile ("extreme") |
-| Ratio | 6.3× | — |
-
-The 6.3× inflation matches the predicted $\sqrt{36} \approx 6$. The bug widened
-the ruler by a factor of six, which is precisely why a real effect looked like
-noise.
+A correlation test is descriptive; the decisive check is prediction. The
+walk-forward test (`scripts/10_market_vs_history.py`) gives a model the market
+probability plus recent history and asks whether later games become easier to
+predict. They do not — adding history slightly *worsens* out-of-sample log loss,
+exactly like the random leagues. No residual correlation to find, no prediction
+to gain.
 
 ---
 
-## Why it still doesn't matter for betting
+## How to read percentile vs p-value
 
-The effect is statistically real but small (~4 points of excess streakiness).
-The walk-forward, out-of-sample test (`scripts/10_market_vs_history.py`) shows
-that adding recent history does not improve prediction of future games, and the
-effect is far too small to overcome the sportsbook margin. It is detectable with
-2,946 games and 10,000 simulations; it is not exploitable.
+We measure a statistic on the real NFL, then on each of 10,000 simulated leagues.
+Those 10,000 values are the "what random looks like" distribution.
 
-**Statistically significant, practically negligible** — the distinction is the
-whole point.
+- **Percentile** = where the real value sits in that pile. 99.7% means only 0.3%
+  of random leagues scored higher; 80% means the real value is unremarkable.
+- **p-value (two-sided)** = the probability, if the coin-flip model were true, of
+  landing at least this far from the middle in either direction. 99.7th
+  percentile → 0.3% above → doubling → p ≈ 0.006–0.007.
+
+They are the same fact in two forms: position, and how surprising that position is.
+
+## A note on the analysis history
+
+Two earlier versions of this test were wrong, in instructive ways:
+
+1. **Pooling bug.** The first version compared the real league-average against a
+   pool of *individual* team-seasons from all simulations. An average of 36 teams
+   has ~6× less spread than a single team, so the pooled ruler was far too wide
+   and the real value looked ordinary (68th percentile). Fixed by computing one
+   league-average per simulated league.
+
+2. **Raw-vs-residual mis-specification.** The corrected pooling still measured
+   *raw* win/loss autocorrelation, which — as shown above — conflates real
+   momentum with the market's own line movement. The right statistic subtracts
+   each game's probability first.
+
+Both corrections point to the same conclusion: momentum is real, and the market
+has already priced it in.
 
 ---
 
-*Reproduce all numbers:* `python scripts/13_verify_persistence.py`
+*Reproduce all numbers:* `python scripts/06_analysis_team_timeseries.py`

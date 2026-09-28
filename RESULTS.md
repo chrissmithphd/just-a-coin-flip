@@ -10,20 +10,21 @@
 
 ## Executive Summary
 
-**Primary Finding:** The real NFL matches the matched Bernoulli model on aggregate calibration and upset behavior, but **team win/loss sequences show a small, statistically significant amount of persistence** that the model does not reproduce. The persistence is too small to improve out-of-sample prediction or to overcome the betting margin.
+**Primary Finding:** NFL streaks are real — raw win/loss sequences are significantly more clustered than independent coin flips — but the effect is entirely explained by the betting line moving after each game. Once each game's market probability is removed, no predictable persistence remains, and recent history provides no out-of-sample edge. The market has already priced the streaks in.
 
-Consistent with the Bernoulli model:
-- ✓ Overall home win totals (18.3rd percentile)
-- ✓ Calibration across probability bins (0/19 outside CI)
+Momentum is real (raw win/loss):
+- ✗ Fewer, longer streaks than independent coin flips ($p < 0.001$)
+- ✗ Raw team autocorrelation elevated at lags 1 and 4 (99.7th percentile, $p \le 0.007$)
+
+The market already accounts for it:
+- ✓ Well-calibrated probabilities (0/19 bins outside CI)
 - ✓ Upset frequency, overall and by bin (76.7th percentile; 0/8 outside CI)
-- ✓ Game-level residual autocorrelation (mixed sequence)
+- ✓ Residual autocorrelation (market line subtracted) not significant at any lag — team lag-1 at 80.0th percentile ($p = 0.40$)
+- ✓ Recent history gives no out-of-sample predictive improvement (walk-forward)
 
-Departures from the Bernoulli model:
-- ✗ Team-averaged autocorrelation at lags 1 and 4 ($p = 0.007$, $0.006$)
-- ✗ Fewer, longer streaks than predicted ($p < 0.001$)
-- Borderline: mean residual after a loss (2.7th percentile, $p = 0.053$)
-
-> **Correction note.** An earlier version of these results reported all team-level tests as consistent with the model. That version pooled team results across simulations, understating the null variance and masking the effects above. The Monte Carlo procedure was corrected to compute each statistic within each simulated league (one value per league). Calibration, upset, and out-of-sample prediction results were unaffected.
+> **Why raw ≠ residual.** The line rises after a win and falls after a loss, so raw win/loss sequences are mechanically correlated with their own moving line. The residual test subtracts each game's probability first, isolating genuine momentum from the market's reaction — and finds none. See [persistence_explained.md](../docs/persistence_explained.md).
+>
+> **Analysis history.** Two earlier versions were wrong: the first pooled team values across simulations (understating null variance); the second fixed pooling but measured raw autocorrelation (conflating momentum with line movement). Both are corrected here. Calibration, upset, and out-of-sample results were unaffected throughout.
 
 ---
 
@@ -83,11 +84,11 @@ All bins consistent with Bernoulli model (0/8 outside 95% CI).
 
 ## 3. Team Time Series Analysis
 
-**Test:** Do team outcomes exhibit momentum, streaks, or autocorrelation beyond what randomness predicts?
+**Test:** Do team outcomes exhibit momentum beyond what the market's per-game probability already encodes?
 
-Each statistic is compared against its distribution across the 10,000 simulated leagues (per-league values, not pooled across teams).
+Each statistic is compared against its distribution across the 10,000 simulated leagues (per-league values, not pooled across teams). We report both the **raw** win/loss statistic and the **residual** statistic ($r_i = Y_i - p_i$), which removes each game's market probability first.
 
-### Streaks
+### Streaks (raw win/loss)
 
 | Metric | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ |
 |--------|----------|---------|--------|------------|---------------|
@@ -96,26 +97,22 @@ Each statistic is compared against its distribution across the 10,000 simulated 
 | Longest win streak | 21 | 16.0 | [12, 24] | 91.6% | 0.168 |
 | Longest loss streak | 20 | 15.9 | [12, 23] | 89.0% | 0.219 |
 
-The real NFL has **significantly fewer streak segments** than the model, i.e. longer average runs. The longest individual streaks are elevated but not individually significant.
+The real NFL has **significantly fewer streak segments** — longer average runs. Streaks are real.
 
-### Autocorrelation
+### Autocorrelation: raw vs. residual
 
-Team-averaged outcome autocorrelation (team average formed within each league):
-
-| Lag | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ |
-|-----|----------|---------|--------|------------|---------------|
-| 1 | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 |
-| 2 | 0.010 | 0.022 | [−0.009, 0.053] | 23.1% | 0.462 |
-| 3 | 0.037 | 0.019 | [−0.012, 0.050] | 87.5% | 0.250 |
-| 4 | 0.064 | 0.017 | [−0.015, 0.050] | 99.7% | 0.006 |
-| 5 | 0.044 | 0.015 | [−0.017, 0.047] | 95.8% | 0.083 |
-
-Lags 1 and 4 are significant ($p = 0.007$, $0.006$; survive Bonferroni $\alpha = 0.01$).
+| Lag | Raw (real) | Raw pct | Raw $p$ | Residual (real) | Residual pct | Residual $p$ |
+|-----|-----------|---------|---------|-----------------|--------------|--------------|
+| 1 | 0.059 | 99.7% | 0.007 | 0.012 | 80.0% | 0.401 |
+| 2 | 0.010 | 23.1% | 0.462 | −0.028 | 3.8% | 0.077 |
+| 3 | 0.037 | 87.5% | 0.250 | −0.010 | 25.7% | 0.515 |
+| 4 | 0.064 | 99.7% | 0.006 | 0.022 | 90.9% | 0.182 |
+| 5 | 0.044 | 95.8% | 0.083 | 0.008 | 67.1% | 0.658 |
 
 **Interpretation:**
-- Mild positive persistence: teams cluster wins/losses slightly more than weighted coin flips
-- Consistent in direction with the streak-count result
-- Effect size is small (~0.06 vs ~0.02 expected) and not exploitable out of sample
+- Raw autocorrelation is significantly elevated (lags 1, 4) — streaks exist.
+- Residual autocorrelation is not significant at any lag — the streaks vanish once the market line is removed.
+- Mechanism: the line rises after a win and falls after a loss, so raw win/loss is mechanically correlated with its own moving line. That correlation, not hidden momentum, is what the raw test detects. See [persistence_explained.md](../docs/persistence_explained.md).
 
 ---
 
@@ -136,7 +133,7 @@ Lags 1 and 4 are significant ($p = 0.007$, $0.006$; survive Bonferroni $\alpha =
 
 No lags show **significant deviations** from Bernoulli expectations.
 
-The game-level residual sequence mixes all teams together, so it is not sensitive to team-level persistence (which the team-level tests above detect).
+The game-level residual sequence mixes all teams together; it agrees with the team-level residual test (Section 3): once the market line is removed, no serial structure remains.
 
 ### Residuals Conditional on Prior Outcome
 
@@ -147,25 +144,25 @@ Mean next-game residual, compared against the same mean computed within each sim
 | After wins | +0.006 | −0.000 | [−0.023, 0.022] | 69.1% | 0.617 |
 | After losses | −0.025 | −0.000 | [−0.025, 0.025] | 2.7% | 0.053 |
 
-After a loss, teams do marginally worse than the market expected — borderline significant and consistent in direction with the persistence found in Tests 1–2.
+After a loss, teams do marginally worse than the market expected — borderline and not significant. Given the residual autocorrelation is flat at every lag, this is best read as noise rather than a real bias.
 
 ---
 
 ## Statistical Summary Table
 
-| Test | Statistic | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ | Departure? |
+| Test | Statistic | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ | Beats model? |
 |------|-----------|----------|---------|--------|------------|---------------|------------|
 | **Calibration** | Bins outside CI | 0 / 19 | ~1 / 19 | — | — | — | No |
 | **Total upsets** | Count | 997 | 978.5 | [930, 1027] | 76.7% | — | No |
 | **Upset bins** | Outside CI | 0 / 8 | ~0.4 / 8 | — | — | — | No |
-| **Win-streak count** | Count | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | **Yes** |
-| **Loss-streak count** | Count | 1,346 | 1,410 | [1,372, 1,449] | 0.1% | 0.001 | **Yes** |
-| **Team autocorr (lag 1)** | Team avg | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | **Yes** |
-| **Team autocorr (lag 4)** | Team avg | 0.064 | 0.017 | [−0.015, 0.050] | 99.7% | 0.006 | **Yes** |
-| **Residual AC (lag 1)** | Game-level | 0.025 | 0.000 | [−0.037, 0.037] | 91.3% | 0.174 | No |
-| **Residual after loss** | Mean | −0.025 | 0.000 | [−0.025, 0.025] | 2.7% | 0.053 | Borderline |
+| **Win-streak count** *(raw)* | Count | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | streaks real |
+| **Loss-streak count** *(raw)* | Count | 1,346 | 1,410 | [1,372, 1,449] | 0.1% | 0.001 | streaks real |
+| **Autocorr lag 1** *(raw)* | Team avg | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | streaks real |
+| **Autocorr lag 1** *(residual)* | Team avg | 0.012 | 0.000 | [−0.029, 0.030] | 80.0% | 0.401 | No |
+| **Autocorr lag 4** *(residual)* | Team avg | 0.022 | 0.000 | [−0.032, 0.033] | 90.9% | 0.182 | No |
+| **Recent history** | OOS log loss | worse | ≈ chance | — | — | — | No |
 
-**Overall:** Aggregate calibration/upset tests do not reject the model; team-sequence tests (streak counts, lag-1/lag-4 autocorrelation) reject it at α = 0.05, indicating mild persistence.
+**Overall:** Raw win/loss sequences are genuinely streakier than the coin-flip model (streak counts and raw autocorrelation). But once each game's market probability is removed, the residual autocorrelation is not significant at any lag, and recent history provides no out-of-sample edge. The streaks are real; the market has already priced them in.
 
 ---
 
@@ -173,11 +170,11 @@ After a loss, teams do marginally worse than the market expected — borderline 
 
 ### What This Means
 
-1. **Markets are well-calibrated.** The closing moneyline aggregates the available information (injuries, weather, travel, rest, coaching, matchups) into a probability that accurately predicts win frequency across the full probability range.
+1. **Momentum is real.** NFL teams have significantly longer streaks and higher raw game-to-game correlation than independent coin flips. Hot and cold stretches are not an illusion.
 
-2. **A small amount of team persistence survives the market price.** Team win/loss sequences are slightly more persistent than the market-implied Bernoulli model predicts (lag-1/lag-4 autocorrelation; fewer, longer streaks). The market prices in most, but not quite all, of a team's momentum.
+2. **The market already prices it in.** The betting line moves after every game — up after a win, down after a loss — so raw win/loss sequences are mechanically correlated with their own line. Once each game's probability is subtracted (residual autocorrelation), the persistence disappears at every lag.
 
-3. **The persistence is detectable but not exploitable.** The walk-forward out-of-sample test found that adding recent history does not improve prediction, and the effect is far too small to overcome the betting margin. Statistical significance here does not translate into practical or financial significance.
+3. **It is not exploitable.** The walk-forward out-of-sample test found that adding recent history does not improve prediction. "Momentum is real" and "momentum is exploitable" are different claims: the first is true, the second is false.
 
 ### What This Does NOT Mean
 
@@ -195,7 +192,7 @@ After a loss, teams do marginally worse than the market expected — borderline 
   - Targeting favorites or underdogs by strength
   - Exploiting upset patterns
 
-- **Market efficiency holds in practice.** The closing line contains essentially all the *exploitable* predictive information. The residual persistence detected here is too small to bet on after paying the vig; the walk-forward test confirms it does not improve out-of-sample prediction.
+- **Market efficiency holds in practice.** The closing line contains essentially all the exploitable predictive information. Streaks are real, but the line already reflects them; the walk-forward test confirms recent history does not improve out-of-sample prediction.
 
 ### Implications for Sports Analytics
 
@@ -203,7 +200,7 @@ After a loss, teams do marginally worse than the market expected — borderline 
 
 - **Time-series models may overfit.** Including lagged outcomes (Win_t-1, Win_t-2, ...) in a regression is unlikely to improve predictions beyond what the current market price already encodes.
 
-- **Momentum is mostly, not entirely, priced in.** A faint positive persistence remains in team sequences, but it is too small to act on: the walk-forward test shows recent form does not improve prediction beyond the current line.
+- **Momentum is fully priced in.** Streaks are real, but once the line is accounted for, recent form adds no predictive value: the walk-forward test shows no out-of-sample improvement beyond the current line.
 
 ---
 
@@ -240,13 +237,13 @@ After a loss, teams do marginally worse than the market expected — borderline 
 
 ## Conclusion
 
-**NFL game outcomes are close to — but not exactly — conditionally independent Bernoulli draws given pregame market probabilities.**
+**Given the pregame market probability, NFL game outcomes are indistinguishable from conditionally independent Bernoulli draws — even though raw win/loss sequences are genuinely streaky.**
 
 The real NFL is statistically indistinguishable from a purely random model where each game is an independent coin flip with bias p_i determined by the closing moneyline.
 
-The market produces well-calibrated probabilities and captures the vast majority of predictable structure. What it misses is a small, statistically significant degree of team persistence — detectable across ~3,000 games and 10,000 simulations, but too faint to improve out-of-sample prediction or to overcome the vig.
+Streaks and momentum are real — raw win/loss sequences are measurably more clustered than independent coin flips. But the betting line moves with each result, so that clustering is already embedded in the price. Once the line is removed, no predictable structure remains, and no recent-history signal improves prediction out of sample.
 
-From a practical and betting perspective, **the market is effectively the model**; from a strict statistical perspective, a measurable residual of momentum remains.
+**The market is effectively the model.** Momentum exists; it just doesn't beat the line.
 
 ---
 

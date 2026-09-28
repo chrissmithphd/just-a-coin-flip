@@ -2,23 +2,33 @@
 """
 Team Time Series Analysis
 
-For each team, construct chronological win/loss sequences and test whether the
-real NFL differs from matched Bernoulli simulations on:
-1. Total winning/losing streak counts
-2. Longest winning/losing streak
-3. Team-averaged lag-k autocorrelation
+Do NFL teams show momentum — and if so, has the betting market already priced
+it in? We measure two things on each team's chronological win/loss sequence and
+compare against 10,000 matched Bernoulli leagues:
 
-CORRECT MONTE CARLO PROTOCOL
-----------------------------
-Every statistic T is defined on a complete league history. For the real NFL we
-compute T_real once. For each of the M simulated leagues we compute T_m using
-the identical procedure, giving a null distribution of M values. We report the
-two-sided Monte Carlo p-value / percentile of T_real in that distribution.
+1. RAW win/loss autocorrelation and streak counts. These test whether outcomes
+   are more clustered than independent coin flips weighted by the closing line.
 
-In particular, a team-averaged statistic is averaged across teams SEPARATELY
-within each simulated league (yielding one value per league), never pooled
-across team x simulation. Extrema (longest streak) use the distribution of
-per-league maxima, never the maximum across all leagues combined.
+2. RESIDUAL autocorrelation, where each outcome has its own game probability
+   subtracted first:  r_i = Y_i - p_i.  This is the clean test of whether
+   *over-performance* predicts *future over-performance* — i.e. whether any
+   momentum survives after the market's line has already reacted to results.
+
+MONTE CARLO PROTOCOL
+--------------------
+Every statistic is a league-level number (team values averaged within a league,
+or summed/maxed across teams). We compute it once on the real NFL and once
+within each of the 10,000 simulated leagues, giving a null distribution of one
+value per league. We report the percentile and two-sided Monte Carlo p-value of
+the real value in that distribution. Team-averaged quantities are averaged
+across teams SEPARATELY within each league — never pooled across team x sim.
+
+KEY RESULT
+----------
+Raw streaks and raw autocorrelation exceed the independent-coin-flip baseline
+(momentum appears real), but the residual autocorrelation does NOT: once the
+market's game-by-game probability is removed, the persistence disappears. The
+market has already priced the streaks in. See docs/persistence_explained.md.
 """
 
 import json
@@ -27,319 +37,260 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from pathlib import Path
-from collections import defaultdict, Counter
+from collections import defaultdict
+
+MIN_GAMES = 15
+MAX_LAG = 5
 
 
 def load_data():
-    """Load real games and Monte Carlo simulations."""
     with open('data/processed/nfl_games_processed.json') as f:
         games = json.load(f)
     mc_outcomes = np.load('data/simulated/monte_carlo_outcomes.npz')['outcomes']
     return games, mc_outcomes
 
 
-def build_team_index(games, min_games=15):
-    """
-    For each team, record the ordered game indices it played and whether it was
-    home in each. Chronological order is the game order in `games` (already
-    sorted by date during processing).
-
-    Returns:
-        dict team -> {'idx': np.array of game indices, 'is_home': np.array bool}
-        restricted to teams with at least `min_games` games.
-    """
-    order = defaultdict(list)  # team -> list of (game_idx, is_home)
+def build_team_index(games, min_games=MIN_GAMES):
+    """team -> {'idx': game indices (chronological), 'is_home': bool array}."""
+    order = defaultdict(list)
     for i, g in enumerate(games):
         order[g['home_team']].append((i, True))
         order[g['away_team']].append((i, False))
-
-    team_index = {}
+    out = {}
     for team, lst in order.items():
         if len(lst) < min_games:
             continue
-        idx = np.array([t[0] for t in lst], dtype=int)
-        is_home = np.array([t[1] for t in lst], dtype=bool)
-        team_index[team] = {'idx': idx, 'is_home': is_home}
-    return team_index
+        out[team] = {
+            'idx': np.array([t[0] for t in lst]),
+            'is_home': np.array([t[1] for t in lst], dtype=bool),
+        }
+    return out
+
+
+def team_prob(team, team_index, p_home):
+    """This team's market win probability for each of its games."""
+    info = team_index[team]
+    return np.where(info['is_home'], p_home[info['idx']], 1 - p_home[info['idx']])
 
 
 def team_outcomes_real(team, team_index, y_real):
-    """Real win/loss sequence (0/1) for a team, chronological."""
     info = team_index[team]
-    home_win = y_real[info['idx']]
-    # team won iff (home and home_win) or (away and not home_win)
-    return np.where(info['is_home'], home_win, 1 - home_win).astype(np.int8)
+    hw = y_real[info['idx']]
+    return np.where(info['is_home'], hw, 1 - hw).astype(float)
 
 
 def team_outcomes_mc(team, team_index, mc_outcomes):
-    """
-    Win/loss matrix (n_sims, n_team_games) for a team across all simulations.
-    """
     info = team_index[team]
-    sub = mc_outcomes[:, info['idx']]           # (n_sims, n_team_games)
-    # flip columns where the team was the away side
+    sub = mc_outcomes[:, info['idx']].astype(float)
     away = ~info['is_home']
     if away.any():
         sub = sub.copy()
         sub[:, away] = 1 - sub[:, away]
-    return sub
+    return sub  # (n_sims, L)
 
 
-# ---------------------------------------------------------------------------
-# Autocorrelation
-# ---------------------------------------------------------------------------
+# --- autocorrelation --------------------------------------------------------
 
-def autocorr_1d(seq, lag):
-    """Lag-k autocorrelation of a single 0/1 sequence."""
-    if len(seq) <= lag:
+def autocorr_1d(seq, lag, center=True):
+    x = seq - seq.mean() if center else seq
+    v = np.mean(x * x)
+    if v == 0 or len(x) <= lag:
         return np.nan
-    x = seq - seq.mean()
-    var = np.mean(x * x)
-    if var == 0:
-        return np.nan
-    return np.mean(x[:-lag] * x[lag:]) / var
+    return np.mean(x[:-lag] * x[lag:]) / v
 
 
-def autocorr_rows(mat, lag):
-    """
-    Lag-k autocorrelation for each row of a (n_sims, L) matrix.
-    Returns array (n_sims,), NaN where variance is 0.
-    """
-    if mat.shape[1] <= lag:
-        return np.full(mat.shape[0], np.nan)
-    x = mat - mat.mean(axis=1, keepdims=True)
-    var = np.mean(x * x, axis=1)
-    lagcov = np.mean(x[:, :-lag] * x[:, lag:], axis=1)
+def autocorr_rows(mat, lag, center=True):
+    x = mat - mat.mean(axis=1, keepdims=True) if center else mat
+    v = np.mean(x * x, axis=1)
+    lc = np.mean(x[:, :-lag] * x[:, lag:], axis=1)
     with np.errstate(invalid='ignore', divide='ignore'):
-        ac = np.where(var == 0, np.nan, lagcov / var)
-    return ac
+        return np.where(v == 0, np.nan, lc / v)
 
 
-def analyze_team_autocorrelation(games, y_real, mc_outcomes, team_index, max_lag=5):
+def team_averaged_null(team_index, mc_outcomes, series_fn, lag, center):
     """
-    Team-averaged autocorrelation, compared against the distribution of the
-    same team-average computed within each simulated league.
+    For each simulated league, average a per-team lag-k autocorrelation across
+    teams -> one value per league. `series_fn(team)` returns the (n_sims, L)
+    matrix of that team's per-sim series (outcomes or residuals).
     """
-    teams = list(team_index.keys())
     n_sims = mc_outcomes.shape[0]
+    s = np.zeros(n_sims)
+    c = np.zeros(n_sims)
+    for team in team_index:
+        ac = autocorr_rows(series_fn(team), lag, center=center)
+        ok = ~np.isnan(ac)
+        s[ok] += ac[ok]
+        c[ok] += 1
+    with np.errstate(invalid='ignore'):
+        per_sim = np.where(c > 0, s / c, np.nan)
+    return per_sim[~np.isnan(per_sim)]
 
-    # Real: average across teams of each team's autocorr
-    real_by_lag = {lag: [] for lag in range(1, max_lag + 1)}
-    for team in teams:
-        seq = team_outcomes_real(team, team_index, y_real)
-        for lag in range(1, max_lag + 1):
-            real_by_lag[lag].append(autocorr_1d(seq, lag))
-    real_mean = {lag: np.nanmean(real_by_lag[lag]) for lag in real_by_lag}
 
-    # MC: for each lag, accumulate sum and count across teams PER simulation,
-    # then divide -> one team-average per simulation.
-    sum_by_lag = {lag: np.zeros(n_sims) for lag in range(1, max_lag + 1)}
-    cnt_by_lag = {lag: np.zeros(n_sims) for lag in range(1, max_lag + 1)}
-    for team in teams:
-        mat = team_outcomes_mc(team, team_index, mc_outcomes)
-        for lag in range(1, max_lag + 1):
-            ac = autocorr_rows(mat, lag)          # (n_sims,)
-            valid = ~np.isnan(ac)
-            sum_by_lag[lag][valid] += ac[valid]
-            cnt_by_lag[lag][valid] += 1
+def summarize(real, dist):
+    dist = np.asarray(dist)
+    return {
+        'real': float(real),
+        'mc_mean': float(dist.mean()),
+        'mc_std': float(dist.std()),
+        'ci_lower': float(np.percentile(dist, 2.5)),
+        'ci_upper': float(np.percentile(dist, 97.5)),
+        'percentile': float((dist < real).mean() * 100),
+        'p_two_sided': float(2 * min((dist <= real).mean(), (dist >= real).mean())),
+    }
 
-    results = {}
-    for lag in range(1, max_lag + 1):
-        with np.errstate(invalid='ignore'):
-            per_sim = np.where(cnt_by_lag[lag] > 0,
-                               sum_by_lag[lag] / cnt_by_lag[lag], np.nan)
-        per_sim = per_sim[~np.isnan(per_sim)]
-        r = real_mean[lag]
-        results[f'lag{lag}'] = {
-            'real': float(r),
-            'mc_mean': float(per_sim.mean()),
-            'mc_std': float(per_sim.std()),
-            'ci_lower': float(np.percentile(per_sim, 2.5)),
-            'ci_upper': float(np.percentile(per_sim, 97.5)),
-            'percentile': float((per_sim < r).mean() * 100),
-            'p_two_sided': float(2 * min((per_sim <= r).mean(), (per_sim >= r).mean())),
-        }
+
+def analyze_autocorrelation(team_index, y_real, p_home, mc_outcomes):
+    """Raw and residual team-averaged autocorrelation, lags 1..MAX_LAG."""
+    teams = list(team_index)
+
+    # series functions
+    def raw_real(t):
+        return team_outcomes_real(t, team_index, y_real)
+
+    def raw_mc(t):
+        return team_outcomes_mc(t, team_index, mc_outcomes)
+
+    def res_real(t):
+        return team_outcomes_real(t, team_index, y_real) - team_prob(t, team_index, p_home)
+
+    def res_mc(t):
+        return team_outcomes_mc(t, team_index, mc_outcomes) - team_prob(t, team_index, p_home)[None, :]
+
+    results = {'raw': {}, 'residual': {}, 'lag1_null': {}}
+
+    for lag in range(1, MAX_LAG + 1):
+        # RAW: center on team mean
+        real_raw = np.nanmean([autocorr_1d(raw_real(t), lag, center=True) for t in teams])
+        null_raw = team_averaged_null(team_index, mc_outcomes, raw_mc, lag, center=True)
+        results['raw'][f'lag{lag}'] = summarize(real_raw, null_raw)
+
+        # RESIDUAL: already mean ~0, do not re-center
+        real_res = np.nanmean([autocorr_1d(res_real(t), lag, center=False) for t in teams])
+        null_res = team_averaged_null(team_index, mc_outcomes, res_mc, lag, center=False)
+        results['residual'][f'lag{lag}'] = summarize(real_res, null_res)
+
+        if lag == 1:
+            results['lag1_null'] = {'raw': null_raw, 'residual': null_res,
+                                    'raw_real': real_raw, 'res_real': real_res}
     return results
 
 
-# ---------------------------------------------------------------------------
-# Streaks
-# ---------------------------------------------------------------------------
+# --- streaks ----------------------------------------------------------------
 
 def streak_stats(seq):
-    """
-    Given a 0/1 sequence, return (n_win_streaks, n_loss_streaks,
-    max_win_streak, max_loss_streak).
-    """
     if len(seq) == 0:
         return 0, 0, 0, 0
-    n_win = n_loss = 0
-    max_win = max_loss = 0
-    cur = seq[0]
-    run = 1
+    n_win = n_loss = max_win = max_loss = 0
+    cur, run = seq[0], 1
     for v in seq[1:]:
         if v == cur:
             run += 1
         else:
             if cur == 1:
-                n_win += 1
-                max_win = max(max_win, run)
+                n_win += 1; max_win = max(max_win, run)
             else:
-                n_loss += 1
-                max_loss = max(max_loss, run)
-            cur = v
-            run = 1
+                n_loss += 1; max_loss = max(max_loss, run)
+            cur, run = v, 1
     if cur == 1:
-        n_win += 1
-        max_win = max(max_win, run)
+        n_win += 1; max_win = max(max_win, run)
     else:
-        n_loss += 1
-        max_loss = max(max_loss, run)
+        n_loss += 1; max_loss = max(max_loss, run)
     return n_win, n_loss, max_win, max_loss
 
 
-def analyze_team_streaks(games, y_real, mc_outcomes, team_index):
-    """
-    League-level streak statistics with correct per-simulation null.
-
-    Real values (summed/maxed across teams) are compared against the
-    distribution of the same quantity computed within each simulated league.
-    """
-    teams = list(team_index.keys())
+def analyze_streaks(team_index, y_real, mc_outcomes):
+    teams = list(team_index)
     n_sims = mc_outcomes.shape[0]
 
-    # Real totals across teams
     r_nwin = r_nloss = r_maxwin = r_maxloss = 0
-    win_len_hist = Counter()
-    loss_len_hist = Counter()
-    for team in teams:
-        seq = team_outcomes_real(team, team_index, y_real)
-        nw, nl, mw, ml = streak_stats(seq)
-        r_nwin += nw
-        r_nloss += nl
-        r_maxwin = max(r_maxwin, mw)
-        r_maxloss = max(r_maxloss, ml)
+    for t in teams:
+        nw, nl, mw, ml = streak_stats(team_outcomes_real(t, team_index, y_real))
+        r_nwin += nw; r_nloss += nl
+        r_maxwin = max(r_maxwin, mw); r_maxloss = max(r_maxloss, ml)
 
-    # Per-simulation accumulators
     nwin = np.zeros(n_sims); nloss = np.zeros(n_sims)
     maxwin = np.zeros(n_sims); maxloss = np.zeros(n_sims)
-    for team in teams:
-        mat = team_outcomes_mc(team, team_index, mc_outcomes)
+    for t in teams:
+        mat = team_outcomes_mc(t, team_index, mc_outcomes)
         for m in range(n_sims):
             nw, nl, mw, ml = streak_stats(mat[m])
-            nwin[m] += nw
-            nloss[m] += nl
-            if mw > maxwin[m]:
-                maxwin[m] = mw
-            if ml > maxloss[m]:
-                maxloss[m] = ml
-
-    def summarize(real_val, dist, higher_is_extreme=None):
-        dist = np.asarray(dist, dtype=float)
-        return {
-            'real': float(real_val),
-            'mc_mean': float(dist.mean()),
-            'mc_std': float(dist.std()),
-            'ci_lower': float(np.percentile(dist, 2.5)),
-            'ci_upper': float(np.percentile(dist, 97.5)),
-            'percentile': float((dist < real_val).mean() * 100),
-            'p_two_sided': float(2 * min((dist <= real_val).mean(),
-                                         (dist >= real_val).mean())),
-        }
+            nwin[m] += nw; nloss[m] += nl
+            if mw > maxwin[m]: maxwin[m] = mw
+            if ml > maxloss[m]: maxloss[m] = ml
 
     return {
         'win_streak_count': summarize(r_nwin, nwin),
         'loss_streak_count': summarize(r_nloss, nloss),
         'max_win_streak': summarize(r_maxwin, maxwin),
         'max_loss_streak': summarize(r_maxloss, maxloss),
-        '_mc_max_win_dist': maxwin,
-        '_mc_max_loss_dist': maxloss,
+        '_maxwin_dist': maxwin,
+        '_maxloss_dist': maxloss,
     }
 
 
-# ---------------------------------------------------------------------------
-# Plots
-# ---------------------------------------------------------------------------
+# --- plots ------------------------------------------------------------------
 
-def plot_max_streak_distributions(streak_results, output_path):
-    """Histogram of per-simulation longest streaks with the real value marked."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+def plot_raw_vs_residual(ac_results, output_path):
+    """
+    Centerpiece: lag-1 autocorrelation distributions.
+    Left  = raw win/loss (real sits far right -> streaks look real).
+    Right = residual after subtracting the market line (real falls back inside).
+    """
+    lag1 = ac_results['lag1_null']
+    raw_null, res_null = lag1['raw'], lag1['residual']
+    raw_real, res_real = lag1['raw_real'], lag1['res_real']
+    raw_pct = ac_results['raw']['lag1']['percentile']
+    res_pct = ac_results['residual']['lag1']['percentile']
 
-    for ax, key, dist_key, color, title in [
-        (ax1, 'max_win_streak', '_mc_max_win_dist', 'darkgreen', 'Longest Winning Streak'),
-        (ax2, 'max_loss_streak', '_mc_max_loss_dist', 'darkred', 'Longest Losing Streak'),
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), sharey=True)
+
+    for ax, null, real, pct, title, sub in [
+        (ax1, raw_null, raw_real, raw_pct,
+         'Raw win/loss streaks',
+         'Real teams cluster more than coin flips'),
+        (ax2, res_null, res_real, res_pct,
+         'After adjusting for the market line',
+         'The clustering is gone — the line already knew'),
     ]:
-        dist = streak_results[dist_key]
-        real = streak_results[key]['real']
-        pct = streak_results[key]['percentile']
-        bins = np.arange(dist.min() - 0.5, dist.max() + 1.5, 1)
-        ax.hist(dist, bins=bins, color='steelblue', edgecolor='black', alpha=0.7,
-                label='Per-league maximum (10,000 sims)')
-        ax.axvline(real, color=color, linestyle='-', linewidth=3,
-                   label=f'Real NFL: {real:.0f}  (pct {pct:.1f}%)')
-        ax.set_xlabel('Longest streak (games)', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Number of simulated leagues', fontsize=12, fontweight='bold')
-        ax.set_title(title, fontsize=13, fontweight='bold')
-        ax.legend(fontsize=10)
+        ax.hist(null, bins=50, color='steelblue', edgecolor='black', alpha=0.7,
+                label='Random leagues (coin flips)')
+        ax.axvline(real, color='darkred', linewidth=3,
+                   label=f'Real NFL: {real:.3f}\n({pct:.1f}th percentile)')
+        ax.axvline(0, color='black', linestyle=':', linewidth=1, alpha=0.6)
+        ax.set_xlabel('Lag-1 autocorrelation (team-averaged)', fontsize=12, fontweight='bold')
+        ax.set_title(f'{title}\n{sub}', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=10, loc='upper right')
         ax.grid(axis='y', alpha=0.3)
 
+    ax1.set_ylabel('Number of simulated leagues', fontsize=12, fontweight='bold')
+    fig.suptitle('Do NFL Streaks Beat the Market?', fontsize=15, fontweight='bold', y=1.02)
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"Saved: {output_path}")
 
 
-def plot_streak_count_distributions(streak_results, output_path):
-    """Histogram of per-simulation total streak counts with real value marked."""
-    # Rebuild count distributions from summaries is not possible; recompute means
-    # via stored dists is only for maxima. For counts we mark real vs mc mean/CI.
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-    for ax, key, color, title in [
-        (ax1, 'win_streak_count', 'darkgreen', 'Total Winning-Streak Count'),
-        (ax2, 'loss_streak_count', 'darkred', 'Total Losing-Streak Count'),
-    ]:
-        s = streak_results[key]
-        # Approximate the null with a normal for display using mc_mean/mc_std
-        lo, hi = s['ci_lower'], s['ci_upper']
-        ax.axvspan(lo, hi, alpha=0.25, color='steelblue', label='95% CI (10,000 sims)')
-        ax.axvline(s['mc_mean'], color='black', linestyle=':', linewidth=2,
-                   label=f"MC mean: {s['mc_mean']:.0f}")
-        ax.axvline(s['real'], color=color, linestyle='-', linewidth=3,
-                   label=f"Real NFL: {s['real']:.0f}  (pct {s['percentile']:.1f}%)")
-        ax.set_xlabel('Total streak count across all teams', fontsize=12, fontweight='bold')
-        ax.set_title(title, fontsize=13, fontweight='bold')
-        ax.legend(fontsize=10)
-        ax.grid(axis='x', alpha=0.3)
-        ax.set_yticks([])
-    plt.tight_layout()
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"Saved: {output_path}")
+def plot_autocorr_by_lag(ac_results, output_path):
+    """Raw vs residual autocorrelation across lags 1..MAX_LAG."""
+    lags = list(range(1, MAX_LAG + 1))
+    fig, ax = plt.subplots(figsize=(11, 6.5))
 
+    for key, color, label in [('raw', 'darkred', 'Raw win/loss'),
+                              ('residual', 'seagreen', 'Adjusted for market line')]:
+        real = [ac_results[key][f'lag{l}']['real'] for l in lags]
+        lo = [ac_results[key][f'lag{l}']['ci_lower'] for l in lags]
+        hi = [ac_results[key][f'lag{l}']['ci_upper'] for l in lags]
+        ax.plot(lags, real, 'o-', color=color, linewidth=2.5, markersize=8, label=f'{label} (real)')
+        ax.fill_between(lags, lo, hi, color=color, alpha=0.15,
+                        label=f'{label} — random 95% range')
 
-def plot_autocorrelation(autocorr_results, output_path):
-    """Plot team-averaged autocorrelation by lag with per-simulation 95% band."""
-    lags = sorted(int(k.replace('lag', '')) for k in autocorr_results)
-    real_vals = [autocorr_results[f'lag{l}']['real'] for l in lags]
-    ci_lo = [autocorr_results[f'lag{l}']['ci_lower'] for l in lags]
-    ci_hi = [autocorr_results[f'lag{l}']['ci_upper'] for l in lags]
-    mc_mean = [autocorr_results[f'lag{l}']['mc_mean'] for l in lags]
-
-    fig, ax = plt.subplots(figsize=(12, 7))
-    x = np.array(lags)
-    ax.fill_between(x, ci_lo, ci_hi, alpha=0.3, color='steelblue',
-                    label='95% CI (per-league team average)')
-    ax.plot(x, mc_mean, 'o-', color='steelblue', linewidth=2, markersize=6,
-            label='MC mean', alpha=0.8)
-    ax.plot(x, real_vals, 'o-', color='darkred', linewidth=3, markersize=10,
-            label='Real NFL', zorder=5)
-    ax.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.5)
-    ax.set_xlabel('Lag (games)', fontsize=13, fontweight='bold')
-    ax.set_ylabel('Team-averaged autocorrelation', fontsize=13, fontweight='bold')
-    ax.set_title('Team-Level Autocorrelation: Real NFL vs Bernoulli Model',
-                 fontsize=14, fontweight='bold')
+    ax.axhline(0, color='black', linestyle=':', linewidth=1, alpha=0.6)
+    ax.set_xlabel('Lag (games apart)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Team-averaged autocorrelation', fontsize=12, fontweight='bold')
+    ax.set_title('Momentum Before and After Accounting for the Market Line',
+                 fontsize=13, fontweight='bold')
     ax.set_xticks(lags)
-    ax.legend(fontsize=11)
+    ax.legend(fontsize=10)
     ax.grid(alpha=0.3)
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -347,34 +298,59 @@ def plot_autocorrelation(autocorr_results, output_path):
     print(f"Saved: {output_path}")
 
 
-def print_summary(streak_results, autocorr_results):
-    print("\n" + "=" * 92)
-    print("TEAM TIME SERIES ANALYSIS (per-simulation null)")
-    print("=" * 92)
-
-    print("\nStreaks (real value vs distribution across 10,000 simulated leagues):")
-    print(f"{'Statistic':>22} {'Real':>8} {'MC mean':>10} {'95% CI':>20} {'pct':>7} {'p2':>7}")
-    print("-" * 92)
-    for key, label in [
-        ('win_streak_count', 'Win-streak count'),
-        ('loss_streak_count', 'Loss-streak count'),
-        ('max_win_streak', 'Longest win streak'),
-        ('max_loss_streak', 'Longest loss streak'),
+def plot_max_streaks(streak_results, output_path):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    for ax, key, dist_key, color, title in [
+        (ax1, 'max_win_streak', '_maxwin_dist', 'darkgreen', 'Longest Winning Streak'),
+        (ax2, 'max_loss_streak', '_maxloss_dist', 'darkred', 'Longest Losing Streak'),
     ]:
+        dist = streak_results[dist_key]
+        real = streak_results[key]['real']
+        pct = streak_results[key]['percentile']
+        bins = np.arange(dist.min() - 0.5, dist.max() + 1.5, 1)
+        ax.hist(dist, bins=bins, color='steelblue', edgecolor='black', alpha=0.7,
+                label='Per-league maximum (random)')
+        ax.axvline(real, color=color, linewidth=3,
+                   label=f'Real NFL: {real:.0f} ({pct:.1f}th pct)')
+        ax.set_xlabel('Longest streak (games)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Number of simulated leagues', fontsize=12, fontweight='bold')
+        ax.set_title(title, fontsize=13, fontweight='bold')
+        ax.legend(fontsize=10)
+        ax.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved: {output_path}")
+
+
+def print_summary(ac_results, streak_results):
+    print("\n" + "=" * 88)
+    print("TEAM TIME SERIES ANALYSIS (per-simulation null)")
+    print("=" * 88)
+
+    print("\nStreaks (raw win/loss):")
+    print(f"{'Statistic':>22} {'Real':>8} {'MC mean':>9} {'95% CI':>18} {'pct':>7} {'p2':>7}")
+    print("-" * 88)
+    for key, label in [('win_streak_count', 'Win-streak count'),
+                       ('loss_streak_count', 'Loss-streak count'),
+                       ('max_win_streak', 'Longest win streak'),
+                       ('max_loss_streak', 'Longest loss streak')]:
         s = streak_results[key]
         ci = f"[{s['ci_lower']:.0f}, {s['ci_upper']:.0f}]"
-        print(f"{label:>22} {s['real']:>8.0f} {s['mc_mean']:>10.1f} {ci:>20} "
+        print(f"{label:>22} {s['real']:>8.0f} {s['mc_mean']:>9.1f} {ci:>18} "
               f"{s['percentile']:>6.1f}% {s['p_two_sided']:>6.3f}")
 
-    print("\nTeam-averaged autocorrelation:")
-    print(f"{'Lag':>5} {'Real':>10} {'MC mean':>10} {'95% CI':>22} {'pct':>7} {'p2':>7}")
-    print("-" * 92)
-    for lag in sorted(int(k.replace('lag', '')) for k in autocorr_results):
-        r = autocorr_results[f'lag{lag}']
-        ci = f"[{r['ci_lower']:.3f}, {r['ci_upper']:.3f}]"
-        print(f"{lag:>5} {r['real']:>10.4f} {r['mc_mean']:>10.4f} {ci:>22} "
-              f"{r['percentile']:>6.1f}% {r['p_two_sided']:>6.3f}")
-    print("=" * 92 + "\n")
+    for kind, header in [('raw', 'RAW win/loss autocorrelation'),
+                        ('residual', 'RESIDUAL autocorrelation (market line removed)')]:
+        print(f"\n{header}:")
+        print(f"{'Lag':>5} {'Real':>10} {'MC mean':>10} {'95% CI':>22} {'pct':>7} {'p2':>7}")
+        print("-" * 88)
+        for lag in range(1, MAX_LAG + 1):
+            r = ac_results[kind][f'lag{lag}']
+            ci = f"[{r['ci_lower']:.3f}, {r['ci_upper']:.3f}]"
+            print(f"{lag:>5} {r['real']:>10.4f} {r['mc_mean']:>10.4f} {ci:>22} "
+                  f"{r['percentile']:>6.1f}% {r['p_two_sided']:>6.3f}")
+    print("=" * 88 + "\n")
 
 
 def main():
@@ -384,29 +360,34 @@ def main():
     print("Loading data...")
     games, mc_outcomes = load_data()
     y_real = np.array([int(g['home_win']) for g in games], dtype=np.int8)
+    p_home = np.array([g['p_home_vig_free'] for g in games])
 
     print("Indexing teams...")
-    team_index = build_team_index(games, min_games=15)
+    team_index = build_team_index(games)
     print(f"  {len(team_index)} teams, {mc_outcomes.shape[0]} simulations")
 
-    print("Analyzing streaks (per-simulation)...")
-    streak_results = analyze_team_streaks(games, y_real, mc_outcomes, team_index)
+    print("Analyzing autocorrelation (raw + residual, per-league null)...")
+    ac_results = analyze_autocorrelation(team_index, y_real, p_home, mc_outcomes)
 
-    print("Analyzing autocorrelation (per-simulation team average)...")
-    autocorr_results = analyze_team_autocorrelation(games, y_real, mc_outcomes,
-                                                    team_index, max_lag=5)
+    print("Analyzing streaks (per-league null)...")
+    streak_results = analyze_streaks(team_index, y_real, mc_outcomes)
 
-    plot_streak_count_distributions(streak_results, output_dir / 'team_streak_counts.png')
-    plot_max_streak_distributions(streak_results, output_dir / 'team_max_streaks.png')
-    plot_autocorrelation(autocorr_results, output_dir / 'team_autocorrelation.png')
+    plot_raw_vs_residual(ac_results, output_dir / 'team_autocorrelation.png')
+    plot_autocorr_by_lag(ac_results, output_dir / 'team_autocorr_by_lag.png')
+    plot_max_streaks(streak_results, output_dir / 'team_max_streaks.png')
 
-    print_summary(streak_results, autocorr_results)
+    print_summary(ac_results, streak_results)
 
     # Save (drop raw distribution arrays)
-    streak_save = {k: v for k, v in streak_results.items() if not k.startswith('_')}
+    def clean(d):
+        return {k: v for k, v in d.items() if not k.startswith('_') and k != 'lag1_null'}
+    payload = {
+        'autocorrelation_raw': clean(ac_results['raw']),
+        'autocorrelation_residual': clean(ac_results['residual']),
+        'streaks': {k: v for k, v in streak_results.items() if not k.startswith('_')},
+    }
     with open(output_dir / 'team_timeseries_results.json', 'w') as f:
-        json.dump({'autocorrelation': autocorr_results, 'streaks': streak_save},
-                  f, indent=2)
+        json.dump(payload, f, indent=2)
     print(f"Saved: {output_dir / 'team_timeseries_results.json'}")
     print("✓ Team time series analysis complete")
 
