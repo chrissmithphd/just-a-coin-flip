@@ -314,17 +314,15 @@ Our results suggest that the market does exactly this. The pregame probability $
 
 ---
 
-## So Can You Beat It? What This Means If You Bet
+## Implications for Sports Betting
 
-Here's the practical punchline. If the market's probability is the *true* probability, and nothing beyond it predicts the outcome, then the odds you're offered are always priced a little worse than your real chance of winning. That small gap — the "vig," or the sportsbook's cut — is charged on **every** bet, win or lose.
+The findings generalize beyond football. If the market's price is the true probability of an outcome, and no additional information improves on it, then the odds offered to a bettor are always set slightly worse than the true probability. This margin — the "vig," or the sportsbook's cut — applies to every wager regardless of result. The NFL data below illustrates a property that holds for any betting market with these two features.
 
-The natural objection: *"If I only bet games I win most of the time, surely a 3% fee can't sink me?"*
+A common assumption is that a bettor who wins the majority of wagers must be profitable. The margin makes this false, and the mechanism is clearest in dollar terms.
 
-It can. And the reason is worth seeing in dollars.
+### An even matchup (–110 both sides)
 
-### A coin-flip game (–110 both sides)
-
-Two evenly matched teams. The book asks you to risk **\$110 to win \$100** on either side. Bet 100 games, win exactly half:
+For two evenly matched teams, a sportsbook typically requires a risk of **\$110 to win \$100** on either side. Across 100 such bets at an exact 50% win rate:
 
 | Outcome | Result |
 |---|---|
@@ -332,13 +330,11 @@ Two evenly matched teams. The book asks you to risk **\$110 to win \$100** on ei
 | 50 losses | –\$5,500 |
 | **Net** | **–\$500** |
 
-You won half your games — a perfect coin-flip record — and still lost \$500. To merely break even at these odds you need to win **52.4%**, not 50%. Every percent above that is fighting a headwind the house built in.
+A perfect coin-flip record still produces a \$500 loss. Break-even at these odds requires a **52.4%** win rate, not 50%.
 
-### A heavy favorite (your 80/20 game)
+### A heavy favorite (an 80/20 matchup)
 
-Now the lopsided game you asked about. A team with a true 80% chance to win *should* pay –400 (risk \$400 to win \$100). But the book shades it to about –450, so \$100 risked returns only **\$22.22** in profit.
-
-Bet 100 of these and hit your expected 80 wins:
+A team with a true 80% win probability corresponds to fair odds of –400 (risk \$400 to win \$100). A sportsbook shades this to approximately –450, so \$100 at risk returns only **\$22.22** in profit. Across 100 such bets at an exact 80% win rate:
 
 | Outcome | Result |
 |---|---|
@@ -346,38 +342,32 @@ Bet 100 of these and hit your expected 80 wins:
 | 20 losses | –\$2,000 |
 | **Net** | **–\$222** |
 
-You won **80 out of 100** games and still walked away down \$222. One loss wipes out four and a half wins, so the break-even line quietly moves from 80% to **81.8%** — just past where the truth sits. That's not an accident; it's the design.
+An 80-of-100 record still produces a \$222 loss. Because a single loss offsets 4.5 wins, break-even rises from 80% to **81.8%** — above the true win probability.
 
-### The whole league, every week, for eleven years
+### Strategies applied to the full dataset
 
-Two worked examples could be cherry-picked. So we ran the strategies against all 2,946 real games (2011–2021), flat \$100 a bet, and against 10,000 "perfectly random" simulated leagues for comparison.
+To confirm the effect is not an artifact of two chosen examples, four flat-stake strategies were applied to all 2,946 games (2011–2021) at \$100 per bet, and to 10,000 matched Bernoulli simulations for comparison.
 
-![You cannot bet above the vig](output/analysis/betting_distribution.png)
+![Profit distribution relative to break-even](output/analysis/betting_distribution.png)
 
-*Figure: Total profit from betting every favorite, \$100 flat, over eleven seasons. The blue histogram is 10,000 simulated leagues where games are pure weighted coin flips. Almost none finish above \$0 (green line). The real NFL (red line) lands right in the losing pile.*
+*Figure: Total profit from betting every favorite at \$100 flat over eleven seasons. The blue histogram is 10,000 simulated leagues in which outcomes are weighted coin flips. Almost none finish above \$0 (green line). The observed NFL result (red line) falls within the losing distribution.*
 
-Every simple strategy bleeds:
-
-| Strategy | Bets | Real NFL result | Return | "Random league" average |
+| Strategy | Bets | Observed result | Return | Simulation mean |
 |---|---:|---:|---:|---:|
 | Bet every favorite | 2,946 | **–\$14,509** | –4.9% | –3.7% |
-| Bet coin-flip games (45–55%) | 367 | **–\$2,650** | –7.2% | –4.5% |
+| Bet even matchups (45–55%) | 367 | **–\$2,650** | –7.2% | –4.5% |
 | Bet heavy favorites (≥75%) | 655 | **–\$1,268** | –1.9% | –3.7% |
 | Bet every underdog | 2,946 | **–\$10,231** | –3.5% | –3.7% |
 
-![Every strategy bleeds out](output/analysis/betting_bankroll.png)
+![Cumulative profit by strategy](output/analysis/betting_bankroll.png)
 
-*Figure: Cumulative profit over eleven seasons for four flat-stake strategies. Every line drifts down. There is no selection rule — favorites, underdogs, close games, blowouts — that climbs back above zero.*
+*Figure: Cumulative profit over eleven seasons for four flat-stake strategies. Every trajectory trends downward. No selection rule tested — favorites, underdogs, even matchups, or heavy favorites — returns to break-even.*
 
-Look at the "random league average" column. It's about **–3.7% for every strategy** — which is almost exactly the sportsbook's average cut in this data (the vig averaged 3.8%). That's the whole story in one number: no matter what you pick, your *expected* return is roughly negative-the-vig. The favorites, the underdogs, the coin-flips — they all converge to the same losing rate, because beyond the price the outcome is random and the house always takes its slice off the top.
+The simulation mean is approximately **–3.7% for every strategy**, matching the average sportsbook margin in this data (3.8%). The expected return of any strategy equals the negative of the vig. Favorites, underdogs, and even matchups converge to the same losing rate because, beyond the price, the outcome carries no exploitable information and the margin is deducted from every wager. The heavy-favorite strategy returned above its simulation mean yet still lost \$1,268, illustrating that a high win rate does not imply a profit.
 
-And notice the heavy favorites — the very bet you'd expect to be "safe." The real NFL actually got a bit *lucky* there (better than 4 out of 5 random leagues) and **still finished down \$1,268.** Winning most of your bets is not the same as winning money.
+### Why losses are guaranteed over enough bets
 
-### The one thing that can beat it
-
-Someone always does come out ahead — over a season, a lucky slice of those 10,000 random leagues finishes in the black. But that's variance, not skill, and variance doesn't repeat on command. There's no rule you can carry into next season that keeps you on the winning side, because the winning side was chosen by chance.
-
-The wins and losses matter. They're just not telling us anything the market doesn't already know.
+Over a finite number of bets, variance allows some outcomes above break-even; a fraction of the 10,000 simulated leagues finish in profit. This mirrors a roulette wheel: any single session may win, but each spin carries negative expected value. As the number of bets grows, the law of large numbers drives the realized return toward its expectation. Because that expectation is negative for every strategy, sustained betting converges to a loss. No selection rule reverses this, since the profitable outcomes are produced by chance rather than by any repeatable edge.
 
 ---
 
