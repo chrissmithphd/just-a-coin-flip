@@ -1,0 +1,42 @@
+{
+  "Bet every favorite": {
+    "n_bets": 2946,
+    "turnover": 294600.0,
+    "total_real": -14508.659290226631,
+    "roi_real_pct": -4.924867376180119,
+    "mc_mean": -10856.763204368654,
+    "mc_std": 3742.916757012678,
+    "mc_roi_pct": -3.685255670186237,
+    "percentile_real": 16.830000000000002
+  },
+  "Bet coin-flip games (45-55%)": {
+    "n_bets": 367,
+    "turnover": 36700.0,
+    "total_real": -2650.4302241293226,
+    "roi_real_pct": -7.221880719698428,
+    "mc_mean": -1641.4703499739235,
+    "mc_std": 1713.5425940691853,
+    "mc_roi_pct": -4.4726712533349415,
+    "percentile_real": 28.08
+  },
+  "Bet heavy favorites (>=75%)": {
+    "n_bets": 655,
+    "turnover": 65500.0,
+    "total_real": -1268.3968035953435,
+    "roi_real_pct": -1.9364836696112115,
+    "mc_mean": -2406.8170196270084,
+    "mc_std": 1205.7871484999055,
+    "mc_roi_pct": -3.674529800957265,
+    "percentile_real": 82.71
+  },
+  "Bet every underdog": {
+    "n_bets": 2946,
+    "turnover": 294600.0,
+    "total_real": -10230.626619567087,
+    "roi_real_pct": -3.4727177934715163,
+    "mc_mean": -10774.03144433966,
+    "mc_std": 8080.998553174059,
+    "mc_roi_pct": -3.6571729274744267,
+    "percentile_real": 52.33
+  }
+}
