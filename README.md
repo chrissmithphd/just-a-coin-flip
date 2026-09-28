@@ -6,7 +6,7 @@
 
 We built 10,000 synthetic NFL histories. Each synthetic game uses the **real pregame market probability** from the actual 2011–2021 NFL seasons, but replaces the actual winner with a Bernoulli random draw. The question: **can you tell which NFL is real?**
 
-Across calibration tests, upset frequency, winning streaks, team autocorrelation, and residual analysis, the real NFL is statistically indistinguishable from matched Bernoulli simulations. The market probability $p_i$ appears to capture all exploitable information; what remains is effectively random.
+The answer is mostly, but not entirely. Calibration, upset frequency, and game-level residual structure are indistinguishable from matched Bernoulli simulations. But team win/loss sequences carry a small, statistically significant amount of extra persistence: teams cluster wins and losses slightly more than the coin-flip model predicts (lag-1 and lag-4 autocorrelation, and fewer but longer streaks). That effect is real yet tiny — too small to improve out-of-sample prediction or to overcome the betting margin, as the walk-forward test below confirms.
 
 This is **not** a test of whether sports outcomes are predictable — markets clearly predict better than chance (home teams win ~56%, not 50%). Instead, we test whether anything remains predictable **after** you condition on what the market already knows.
 
@@ -146,11 +146,13 @@ The average home team had a 56.6% win probability, but individual games ranged f
 
 Intuitively, "momentum" or "hot hand" effects would produce longer winning streaks than random chance. Conversely, "regression to the mean" would shorten streaks. Do the data show either?
 
-![Streak Distributions](output/analysis/team_streaks.png)
+Each statistic is compared against its own null distribution: we compute the same quantity within each of the 10,000 simulated leagues, then locate the real NFL value in that distribution.
 
-*Figure 6: **Left:** Distribution of winning streak lengths. **Right:** Distribution of losing streak lengths. Real NFL (dark red/green) compared to average across 10,000 Bernoulli simulations (blue). Distributions are nearly identical. The real NFL produced 1,342 winning streaks and 1,349 losing streaks; Bernoulli simulations averaged 1,412 and 1,414 respectively. The longest real streaks (21-game win streak, 20-game loss streak) are well within the Monte Carlo range (up to 41 and 37).*
+![Longest-streak distributions](output/analysis/team_max_streaks.png)
 
-**Result:** Streak distributions in the real NFL are statistically indistinguishable from Bernoulli simulations. No evidence for momentum (excess long streaks) or mean reversion (excess short streaks).
+*Figure 6: Distribution of the single longest winning (left) and losing (right) streak within each simulated league. The real NFL's longest streaks — 21 wins, 20 losses — sit at the 92nd and 89th percentiles: elevated relative to the typical simulated maximum (~16), but not beyond the 95% range.*
+
+**Result:** The real NFL has **significantly fewer, and therefore longer, streaks** than the coin-flip model. It produced 1,338 winning streaks against a simulated average of 1,408 (below the 0.1st percentile, $p < 0.001$) and 1,346 losing streaks against 1,410 ($p = 0.001$). Fewer streak segments across the same number of games means each run lasts longer on average — mild persistence. The longest individual streaks are elevated (92nd/89th percentile) but not individually significant.
 
 ### Can Recent History Beat the Market?
 
@@ -186,17 +188,17 @@ $$
 \rho_k = \frac{1}{N_{\text{teams}}} \sum_{\text{team}} \text{Corr}(Y_t, Y_{t+k} \mid \text{team})
 $$
 
-If $\rho_k > 0$, recent wins predict future wins (momentum). If $\rho_k < 0$, recent wins predict future losses (regression). Under the Bernoulli null, $\rho_k \approx 0$ for all $k > 0$.
+If $\rho_k > 0$, recent wins predict future wins (momentum). If $\rho_k < 0$, recent wins predict future losses (regression). Under the Bernoulli model the simulations still show slightly positive $\rho_k$, because strong teams carry high $p_i$ across many games; the test asks whether the real value exceeds that simulated baseline. The team average is formed **within each simulated league** and compared to the real team average — one value per league, not pooled across teams.
 
-| Lag | Real NFL | MC Mean | MC Std | Percentile |
-|-----|----------|---------|--------|------------|
-| 1 | 0.059 | 0.016 | 0.098 | 68.2% |
-| 2 | 0.010 | 0.022 | 0.096 | 43.5% |
-| 3 | 0.037 | 0.019 | 0.098 | 56.8% |
-| 4 | 0.064 | 0.017 | 0.100 | 70.2% |
-| 5 | 0.044 | 0.015 | 0.102 | 61.9% |
+| Lag | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ |
+|-----|----------|---------|--------|------------|---------------|
+| 1 | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 |
+| 2 | 0.010 | 0.022 | [−0.009, 0.053] | 23.1% | 0.462 |
+| 3 | 0.037 | 0.019 | [−0.012, 0.050] | 87.5% | 0.250 |
+| 4 | 0.064 | 0.017 | [−0.015, 0.050] | 99.7% | 0.006 |
+| 5 | 0.044 | 0.015 | [−0.017, 0.047] | 95.8% | 0.083 |
 
-**Result:** All lags fall well within ±2σ of the Monte Carlo distribution. Real NFL autocorrelations are indistinguishable from those arising by chance in Bernoulli sequences.
+**Result:** Lags 1 and 4 exceed the Bernoulli baseline significantly ($p = 0.007$ and $p = 0.006$; both survive a Bonferroni threshold of $0.05/5 = 0.01$). Real team sequences are slightly *more* persistent than weighted coin flips — the same mild clustering seen in the streak counts. The effect is small: an autocorrelation of about 0.06 against an expected 0.02.
 
 ### Test 3: Residual Autocorrelation
 
@@ -210,7 +212,7 @@ If outcomes are truly Bernoulli($p_i$), residuals should be **white noise** — 
 
 ![Residual Autocorrelation](output/analysis/residuals_autocorrelation.png)
 
-*Figure 7: Autocorrelation of residuals $r_i = Y_i - p_i$ at lags 1–10. Real NFL (dark red) compared to Bernoulli Monte Carlo mean (blue line) with ±2σ confidence band (shaded). All lags fall within the expected range. Residuals behave like white noise — no temporal structure remains after conditioning on $p_i$.*
+*Figure 7: Autocorrelation of residuals $r_i = Y_i - p_i$ at lags 1–10, computed on the global chronological sequence. Real NFL (dark red) compared to Bernoulli Monte Carlo mean (blue line) with ±2σ confidence band (shaded). All lags fall within the expected range.*
 
 | Lag | Real NFL $r_i$ Autocorr | MC Mean | MC Std | Percentile |
 |-----|------------------------|---------|--------|------------|
@@ -220,34 +222,38 @@ If outcomes are truly Bernoulli($p_i$), residuals should be **white noise** — 
 | 4 | –0.020 | –0.001 | 0.019 | 13.8% |
 | 5 | 0.022 | 0.000 | 0.018 | 88.7% |
 
-**Result:** Residual autocorrelations at all lags are consistent with white noise. Once you condition on $p_i$, past outcomes provide no additional predictive information.
+**Result:** No lag shows significant residual autocorrelation in the global game sequence. Note this test mixes all teams together, so consecutive games involve unrelated teams; it is not sensitive to the team-level persistence detected in Tests 1 and 2, which follow each team across its own games.
 
 #### Do Residuals Differ After Wins vs. Losses?
 
-If there were a "hot hand" effect, we'd expect positive residuals (better-than-expected performance) following wins. If there were compensatory "cool-down," we'd expect negative residuals.
+If there were a "hot hand" effect, we'd expect positive residuals (better-than-expected performance) following wins. If there were compensatory "cool-down," we'd expect negative residuals. Each mean is compared against the distribution of the same mean computed within each simulated league.
 
-- **After wins:** $\bar{r} = +0.006$ (real NFL) vs. $0.000$ (MC)
-- **After losses:** $\bar{r} = –0.025$ (real NFL) vs. $0.000$ (MC)
+- **After wins:** $\bar{r} = +0.006$ (real) vs. MC 95% CI [−0.023, 0.022], 69th percentile — consistent with the model.
+- **After losses:** $\bar{r} = -0.025$ (real) vs. MC 95% CI [−0.025, 0.025], 2.7th percentile, two-sided $p = 0.053$ — borderline.
 
-Both are within ±2σ of Monte Carlo expectations. No evidence for momentum or regression effects conditional on the market price.
+Following a loss, teams perform marginally worse than the market expected — a hint of negative bias that sits right at the edge of significance. It is consistent in direction with the mild persistence found in the streak and autocorrelation tests, but on its own is not conclusive.
 
 ---
 
 ## Summary of Statistical Tests
 
-| Test | Real NFL | Bernoulli Expectation | 95% CI | Percentile | Consistent? |
-|------|----------|----------------------|--------|------------|------------|
-| **Total home wins** | 1,644 / 2,946 | 1,666 ± 25 | [1,617, 1,716] | 18.3% | ✓ |
-| **Calibration bins** | 0 / 19 outside CI | ~1 / 19 expected | — | — | ✓ |
-| **Total upsets** | 997 | 978.5 ± 24.6 | [930, 1,027] | 76.7% | ✓ |
-| **Upset bins** | 0 / 8 outside CI | ~0.4 / 8 expected | — | — | ✓ |
-| **Win streak count** | 1,342 | 1,412 avg | — | — | ✓ |
-| **Loss streak count** | 1,349 | 1,414 avg | — | — | ✓ |
-| **Max win streak** | 21 games | up to 41 in MC | — | — | ✓ |
-| **Team autocorr (lag 1)** | 0.059 | 0.016 ± 0.098 | [–0.18, 0.21] | 68.2% | ✓ |
-| **Residual autocorr (lag 1)** | 0.025 | 0.000 ± 0.019 | [–0.037, 0.037] | 91.3% | ✓ |
+Each null distribution is built by computing the identical statistic within each of the 10,000 simulated leagues (team-averaged quantities are averaged across teams separately within each league; maxima use the distribution of per-league maxima).
 
-**Verdict:** Across all tests, the real NFL is statistically indistinguishable from the Bernoulli model.
+| Test | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ | Consistent? |
+|------|----------|---------|--------|------------|---------------|------------|
+| **Total home wins** | 1,644 | 1,666 | [1,617, 1,716] | 18.3% | — | ✓ |
+| **Calibration bins** | 0 / 19 outside CI | ~1 / 19 | — | — | — | ✓ |
+| **Total upsets** | 997 | 978.5 | [930, 1,027] | 76.7% | — | ✓ |
+| **Upset bins** | 0 / 8 outside CI | ~0.4 / 8 | — | — | — | ✓ |
+| **Win streak count** | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | ✗ fewer/longer |
+| **Loss streak count** | 1,346 | 1,410 | [1,372, 1,449] | 0.1% | 0.001 | ✗ fewer/longer |
+| **Longest win streak** | 21 | 16.0 | [12, 24] | 91.6% | 0.168 | ✓ (elevated) |
+| **Team autocorr (lag 1)** | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | ✗ persistent |
+| **Team autocorr (lag 4)** | 0.064 | 0.017 | [−0.015, 0.050] | 99.7% | 0.006 | ✗ persistent |
+| **Residual autocorr (lag 1)** | 0.025 | 0.000 | [−0.037, 0.037] | 91.3% | 0.174 | ✓ |
+| **Residual after losses** | −0.025 | 0.000 | [−0.025, 0.025] | 2.7% | 0.053 | borderline |
+
+**Verdict:** The real NFL matches the Bernoulli model on aggregate calibration and upset rates, but team win/loss sequences show a small, statistically significant degree of persistence (streak counts and lag-1/lag-4 autocorrelation). The departures are consistent with each other in direction and modest in size.
 
 ---
 
@@ -259,35 +265,31 @@ $$
 Y_i \mid p_i \overset{?}{\sim} \text{Bernoulli}(p_i)
 $$
 
-**Evidence consistent with the Bernoulli null:**
+**Evidence consistent with the Bernoulli model:**
 - ✓ Markets are well-calibrated (0/19 bins outside CI)
 - ✓ Upsets occur at the predicted rate (percentile: 76.7%)
 - ✓ No favorite-longshot bias (0/8 upset bins outside CI)
-- ✓ Streak distributions match Bernoulli expectations
-- ✓ Team autocorrelations consistent with white noise
-- ✓ Residuals show no temporal structure
-- ✓ No momentum or mean-reversion effects
+- ✓ Total home wins consistent with the model
+- ✓ Game-level residuals show no autocorrelation in the mixed sequence
 
-**Evidence against the Bernoulli null:**
-- None detected
+**Evidence against the Bernoulli model:**
+- ✗ Team win/loss sequences show significant positive autocorrelation at lags 1 and 4 ($p = 0.007$, $0.006$)
+- ✗ Significantly fewer, and therefore longer, streaks than the model predicts ($p < 0.001$)
+- Borderline: teams do slightly worse than expected after a loss ($p = 0.053$)
+
+These departures all point the same way: a small amount of **persistence** in team form beyond what the market's per-game probability encodes.
 
 **What this does NOT mean:**
-- ❌ It does **not** mean NFL games are "random" in any philosophical sense. Players exert skill, coaching matters, injuries affect outcomes.
-- ❌ It does **not** mean game outcomes are inherently unpredictable. The market clearly predicts (home teams win 56%, not 50%).
-- ❌ It does **not** mean small effects don't exist. With 2,946 games, deviations below ~2–3% may be undetectable.
+- ❌ It does **not** mean the persistence is exploitable. The walk-forward test showed that adding recent history does **not** improve out-of-sample prediction, and the effect is far too small to overcome the betting margin.
+- ❌ It does **not** overturn market efficiency in any practical sense. The market is well-calibrated and no simple strategy beats it.
+- ❌ It does **not** mean games are "random" — skill, coaching, and injuries clearly drive outcomes; the market simply prices most of that in.
 
 **What this DOES mean:**
-- ✓ The closing moneyline probability $p_i$ appears to be a **sufficient statistic** for predicting game $i$.
-- ✓ After conditioning on $p_i$, **no additional exploitable structure remains** in the outcome sequence.
-- ✓ Past outcomes (streaks, recent performance, upset history) provide **no incremental predictive power** beyond what $p_i$ already encodes.
-- ✓ This is **strong evidence for market efficiency**: the collective wisdom of bettors, aggregated through the closing line, captures all publicly available information.
+- The closing probability $p_i$ captures the large majority of predictable structure, but **not quite all of it**. A faint residual of team persistence survives.
+- That residual is **statistically detectable yet practically negligible**: visible with 2,946 games and 10,000 simulations, invisible to an out-of-sample predictor or a bettor.
+- The distinction between *statistical* and *practical* significance is the heart of the result.
 
-**Statistical nuance:** We have **failed to reject** the Bernoulli null across all tests. This is not the same as **proving** the null is true. It is possible that:
-1. Small deviations exist but are below our detection threshold.
-2. Specific subsets (e.g., division games, weather games, playoff games) exhibit patterns we did not test.
-3. The market misprices edge cases that our 11-year sample did not capture.
-
-What we can confidently say is that **if deviations exist, they are subtle enough to be invisible** in a dataset of ~3,000 games tested across calibration, upsets, streaks, autocorrelation, and residual structure.
+**A note on the earlier version.** An initial run of these tests pooled team results across all simulations, which understated the null variance and hid the autocorrelation and streak effects (they appeared "consistent"). Correcting the Monte Carlo procedure to compute each statistic within each simulated league — one value per league — revealed the departures reported here. The calibration, upset, and out-of-sample prediction results were unaffected.
 
 ---
 
@@ -310,7 +312,7 @@ Each $p_i$ reflects:
 
 The market may be **excellent at estimating these changing weights** — better than any individual analyst — without being able to **predict the individual realization** beyond the probability itself.
 
-Our results suggest that the market does exactly this. The pregame probability $p_i$ aggregates all exploitable information, and what remains is effectively a weighted coin flip.
+Our results suggest that the market does very nearly this. The pregame probability $p_i$ aggregates almost all exploitable information; what remains is close to a weighted coin flip, apart from a faint residue of team persistence too small to exploit.
 
 ---
 
@@ -434,13 +436,19 @@ python scripts/08_run_all_analyses.py
 
 ![Team Autocorrelation](output/analysis/team_autocorrelation.png)
 
-*Figure 9: Team-level outcome autocorrelation at lags 1–5, averaged across all teams. Real NFL (red) compared to Bernoulli Monte Carlo (blue) with ±2σ error bars. All lags consistent with zero autocorrelation.*
+*Figure 9: Team-averaged autocorrelation at lags 1–5. Real NFL (red) versus the 95% range of the same team-average computed within each simulated league (blue band). Lags 1 and 4 sit above the band — the real league is slightly more persistent than the model.*
+
+### Streak Counts
+
+![Streak Counts](output/analysis/team_streak_counts.png)
+
+*Figure 10: Total winning- and losing-streak counts across all teams. The real NFL (colored line) falls below the 95% range of the simulated leagues (blue band): fewer streak segments, meaning longer average runs.*
 
 ### Residual Distribution
 
 ![Residual Distribution](output/analysis/residuals_distribution.png)
 
-*Figure 10: Distribution of residuals $r_i = Y_i - p_i$. Real NFL (red) overlays the Bernoulli Monte Carlo distribution (blue). Distributions are nearly identical (real: mean = –0.008, std = 0.474; MC: mean = 0.000, std = 0.474).*
+*Figure 11: Distribution of residuals $r_i = Y_i - p_i$. Real NFL (red) overlays the Bernoulli Monte Carlo distribution (blue). Distributions are nearly identical (real: mean = –0.008, std = 0.474; MC: mean = 0.000, std = 0.474).*
 
 ---
 

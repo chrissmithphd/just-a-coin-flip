@@ -108,65 +108,56 @@ def analyze_residual_autocorrelation(residuals_real, residuals_mc, max_lag=10):
 
 def analyze_residuals_after_outcomes(games, residuals_real, residuals_mc):
     """
-    Compare residuals following wins vs losses.
+    Compare the mean residual following wins vs losses (a "hot hand" /
+    regression-to-mean probe) using a correct per-simulation null.
 
-    Test for "hot hand" or "regression to mean" effects.
+    The statistic T is a single number: the mean residual over all games that
+    followed a win (or loss) in chronological order. We compute T once for the
+    real NFL, then compute the SAME mean within each simulated league, giving a
+    null distribution of one value per league. We compare the real T to that
+    distribution -- never to a pool of individual residuals across leagues.
     """
+    mc_outcomes = np.load('data/simulated/monte_carlo_outcomes.npz')['outcomes']
     y_real = np.array([int(g['home_win']) for g in games])
 
-    # Residuals after wins (excluding last game)
-    after_win_mask = (y_real[:-1] == 1)
-    residuals_after_win_real = residuals_real[1:][after_win_mask]
+    # Real statistic: mean of next-game residual, split by previous outcome
+    prev_win_real = (y_real[:-1] == 1)
+    prev_loss_real = (y_real[:-1] == 0)
+    next_resid_real = residuals_real[1:]
+    real_after_win = float(next_resid_real[prev_win_real].mean())
+    real_after_loss = float(next_resid_real[prev_loss_real].mean())
 
-    # Residuals after losses
-    after_loss_mask = (y_real[:-1] == 0)
-    residuals_after_loss_real = residuals_real[1:][after_loss_mask]
+    # Per-simulation null: one mean per league
+    prev_outcomes = mc_outcomes[:, :-1]          # (n_sims, n_games-1)
+    next_resid_mc = residuals_mc[:, 1:]          # (n_sims, n_games-1)
 
-    # MC
-    residuals_after_win_mc = []
-    residuals_after_loss_mc = []
+    win_mask = (prev_outcomes == 1)
+    loss_mask = (prev_outcomes == 0)
 
-    for sim_outcomes in residuals_mc:
-        y_sim = (sim_outcomes > 0).astype(int)  # Convert residuals back to outcomes
-        # Actually we need outcomes, not residuals
-        pass
+    win_counts = win_mask.sum(axis=1)
+    loss_counts = loss_mask.sum(axis=1)
+    means_after_win = (next_resid_mc * win_mask).sum(axis=1) / win_counts
+    means_after_loss = (next_resid_mc * loss_mask).sum(axis=1) / loss_counts
 
-    # Simpler approach: use MC outcomes
-    mc_data = np.load('data/simulated/monte_carlo_outcomes.npz')
-    mc_outcomes = mc_data['outcomes']
-
-    for sim_idx, sim_outcomes in enumerate(mc_outcomes):
-        sim_residuals = residuals_mc[sim_idx]
-
-        after_win_mask_sim = (sim_outcomes[:-1] == 1)
-        after_loss_mask_sim = (sim_outcomes[:-1] == 0)
-
-        residuals_after_win_mc.extend(sim_residuals[1:][after_win_mask_sim])
-        residuals_after_loss_mc.extend(sim_residuals[1:][after_loss_mask_sim])
-
-    residuals_after_win_mc = np.array(residuals_after_win_mc)
-    residuals_after_loss_mc = np.array(residuals_after_loss_mc)
-
-    results = {
-        'after_win': {
-            'real_mean': float(np.mean(residuals_after_win_real)),
-            'real_std': float(np.std(residuals_after_win_real)),
-            'mc_mean': float(np.mean(residuals_after_win_mc)),
-            'mc_std': float(np.std(residuals_after_win_mc)),
-            'n_real': int(len(residuals_after_win_real)),
-            'n_mc': int(len(residuals_after_win_mc))
-        },
-        'after_loss': {
-            'real_mean': float(np.mean(residuals_after_loss_real)),
-            'real_std': float(np.std(residuals_after_loss_real)),
-            'mc_mean': float(np.mean(residuals_after_loss_mc)),
-            'mc_std': float(np.std(residuals_after_loss_mc)),
-            'n_real': int(len(residuals_after_loss_real)),
-            'n_mc': int(len(residuals_after_loss_mc))
+    def summarize(real_val, dist):
+        dist = np.asarray(dist, dtype=float)
+        return {
+            'real': float(real_val),
+            'mc_mean': float(dist.mean()),
+            'mc_std': float(dist.std()),
+            'ci_lower': float(np.percentile(dist, 2.5)),
+            'ci_upper': float(np.percentile(dist, 97.5)),
+            'percentile': float((dist < real_val).mean() * 100),
+            'p_two_sided': float(2 * min((dist <= real_val).mean(),
+                                         (dist >= real_val).mean())),
         }
-    }
 
-    return results
+    return {
+        'after_win': summarize(real_after_win, means_after_win),
+        'after_loss': summarize(real_after_loss, means_after_loss),
+        'n_after_win_real': int(prev_win_real.sum()),
+        'n_after_loss_real': int(prev_loss_real.sum()),
+    }
 
 
 def plot_residual_autocorrelation(ac_results, output_path):
@@ -265,26 +256,17 @@ def print_residuals_summary(ac_results, outcome_results):
         pct = r['percentile'] if r['percentile'] is not None else float('nan')
         print(f"{lag:>5} {real_val:>10.4f} {r['mc_mean']:>10.4f} {r['mc_std']:>10.4f} {pct:>12.1f}%")
 
-    print("\nResiduals Conditional on Prior Outcome:")
-    print(f"\nAfter Wins:")
-    print(f"  Real NFL: {outcome_results['after_win']['real_mean']:>7.4f} ± {outcome_results['after_win']['real_std']:.4f} (n={outcome_results['after_win']['n_real']})")
-    print(f"  MC:       {outcome_results['after_win']['mc_mean']:>7.4f} ± {outcome_results['after_win']['mc_std']:.4f}")
+    print("\nMean residual conditional on prior outcome (per-simulation null):")
+    print(f"{'Condition':>14} {'Real':>10} {'MC mean':>10} {'95% CI':>22} {'pct':>7} {'p2':>7}")
+    print("-" * 78)
+    for key, label in [('after_win', 'After wins'), ('after_loss', 'After losses')]:
+        s = outcome_results[key]
+        ci = f"[{s['ci_lower']:.4f}, {s['ci_upper']:.4f}]"
+        print(f"{label:>14} {s['real']:>10.4f} {s['mc_mean']:>10.4f} {ci:>22} "
+              f"{s['percentile']:>6.1f}% {s['p_two_sided']:>6.3f}")
 
-    print(f"\nAfter Losses:")
-    print(f"  Real NFL: {outcome_results['after_loss']['real_mean']:>7.4f} ± {outcome_results['after_loss']['real_std']:.4f} (n={outcome_results['after_loss']['n_real']})")
-    print(f"  MC:       {outcome_results['after_loss']['mc_mean']:>7.4f} ± {outcome_results['after_loss']['mc_std']:.4f}")
-
-    # Test if real differs from MC
-    if abs(outcome_results['after_win']['real_mean']) > 2 * outcome_results['after_win']['mc_std']:
-        print("  ⚠️  Real NFL residuals after wins deviate from MC expectation")
-    else:
-        print("  ✓ Real NFL residuals after wins consistent with Bernoulli model")
-
-    if abs(outcome_results['after_loss']['real_mean']) > 2 * outcome_results['after_loss']['mc_std']:
-        print("  ⚠️  Real NFL residuals after losses deviate from MC expectation")
-    else:
-        print("  ✓ Real NFL residuals after losses consistent with Bernoulli model")
-
+    print(f"\n  (real n after wins = {outcome_results['n_after_win_real']}, "
+          f"after losses = {outcome_results['n_after_loss_real']})")
     print("=" * 100 + "\n")
 
 

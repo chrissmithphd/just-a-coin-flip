@@ -5,6 +5,34 @@
 
 ---
 
+## RESOLUTION (2026-09-28)
+
+All four errors have been fixed in `scripts/06_analysis_team_timeseries.py` and
+`scripts/07_analysis_residuals.py`. Each statistic is now computed within every
+simulated league (one value per league); maxima use the distribution of
+per-league maxima. The analyses were rerun and the README and RESULTS.md were
+updated.
+
+**Correcting the errors changed the conclusions:**
+
+| Statistic | Buggy result | Corrected result |
+|-----------|--------------|------------------|
+| Team autocorr lag 1 | 68th pct, "consistent" | 99.7th pct, $p = 0.007$ — **significant** |
+| Team autocorr lag 4 | 70th pct, "consistent" | 99.7th pct, $p = 0.006$ — **significant** |
+| Win-streak count | "≈ equal averages" | 1,338 vs 1,408, $p < 0.001$ — **significant** |
+| Longest win streak | "within range (up to 41)" | 21 vs typical 16, 91.6th pct — elevated, not significant |
+| Residual after loss | "within ±2σ" | 2.7th pct, $p = 0.053$ — borderline |
+
+The pooling bug had inflated the null variance (~6x), masking genuine team
+persistence. The corrected finding: the real NFL shows small but significant
+persistence beyond the Bernoulli model, though it is too small to improve
+out-of-sample prediction (walk-forward test) or beat the betting margin.
+Calibration, upset, and out-of-sample prediction results were unaffected.
+
+The remainder of this document is the original audit, retained for the record.
+
+---
+
 ## Executive Summary
 
 **Four critical statistical errors invalidate multiple key claims:**
