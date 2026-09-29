@@ -1,6 +1,6 @@
-# Are NFL Games Just Weighted Coin Flips?
+# Beating the Game Isn't Beating the Price
 
-*Testing whether professional football outcomes are statistically distinguishable from independent random draws when conditioned on pregame betting market probabilities.*
+*A sports-betting question — can information help you once the odds already reflect it? — tested on 2,946 NFL games (2011–2021).*
 
 ---
 
