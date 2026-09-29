@@ -4,17 +4,17 @@
 
 ---
 
-A bettor isn't really competing against chance. A bettor is competing against a **price** — the odds, which already reflect what the market knows about each game. So the useful question isn't "can you predict the game?" It's a harder one: **do you know something about the game that the price hasn't already captured?** Information only becomes an edge if it isn't in the odds yet.
+A bettor isn't really competing against chance. A bettor is competing against **the odds a sportsbook offers** — odds that already reflect what the market knows about each game, and that set both the implied win probability and what a winning bet pays. Predicting who wins isn't enough, because the sportsbook can see the likely winner too and shade the odds and payout accordingly. So the useful question isn't "can you predict the game?" It's harder: **do you know something the offered odds haven't already accounted for?** Information only becomes an edge if it isn't in the odds yet.
 
-We test that with NFL betting data. For each of 2,946 games (2011–2021) the closing line implies a home-win probability. We build 10,000 synthetic NFL histories that keep those exact probabilities but decide each game with a weighted coin flip, and ask what, if anything, separates the real NFL from the coin-flip version.
+We test that with NFL betting data. For each of 2,946 games (2011–2021) the closing moneyline odds imply a home-win probability. We build 10,000 synthetic NFL histories that keep those exact probabilities but decide each game with a weighted coin flip, and ask what, if anything, separates the real NFL from the coin-flip version.
 
 Three findings, in plain terms:
 
-- **NFL games are weighted coin flips, not 50/50 coin flips.** The odds are well-calibrated, and "upsets" happen about as often as the prices say they should.
+- **NFL games are weighted coin flips, not 50/50 coin flips.** The odds are well-calibrated, and "upsets" happen about as often as the implied probabilities say they should.
 - **Real results are slightly streakier than the simplest weighted-coin model** — the NFL has about 5% fewer separate winning and losing runs than the random histories. Concretely, a run of wins or losses lasts about 2.2 games on average, versus about 2.1 in the coin-flip model: roughly a tenth of a game longer. It's a small, consistent amount of extra clustering, not a dramatic "hot hand."
-- **Scored against the price, that extra clustering carries no usable information.** Once you measure each result against the same game's market probability, the persistence no longer stands out, and knowing a team's recent form does not improve predictions of future games beyond what the closing odds already say.
+- **Measured against the odds, that extra clustering carries no usable information.** Once you score each result against the same game's implied win probability, the persistence no longer stands out, and knowing a team's recent form does not improve predictions of future games beyond what the closing odds already say.
 
-The NFL is the evidence here, so these specific numbers are about the NFL. But the lesson is general to sports betting: being right about a game is not the same as being more right than the price.
+The NFL is the evidence here, so these specific numbers are about the NFL. But the lesson is general to sports betting: being right about a game is not the same as being more right than the odds you're offered.
 
 $$
 Y_i^{\text{NFL}} \overset{?}{\sim} Y_i^* \sim \text{Bernoulli}(p_i)
@@ -123,9 +123,9 @@ Each simulation uses the **exact same** $p_i$ values from the real NFL — same 
 
 These synthetic histories let us ask: **what patterns would we expect to see in a purely random NFL?** And critically: **does the real NFL deviate from that?**
 
-Market participants have access to the kinds of information that plausibly move a line — team strength, home field, injuries, weather, travel, rest, matchups, past performance — and the closing price is their collective estimate. We can't see from this data exactly what any given price incorporated or why it settled where it did; we only have the final number.
+Market participants have access to the kinds of information that plausibly move a line — team strength, home field, injuries, weather, travel, rest, matchups, past performance — and the closing moneyline odds are their collective estimate. We can't see from this data exactly what any given line incorporated or why it settled where it did; we only have the final odds.
 
-We are **not** testing whether those factors matter. We are testing whether, given the closing price, past outcomes reveal any additional structure the price didn't already reflect.
+We are **not** testing whether those factors matter. We are testing whether, given the closing odds, past outcomes reveal any additional structure the odds didn't already reflect.
 
 ---
 
@@ -157,15 +157,15 @@ A separate question is whether the NFL's most *spectacular* streaks are surprisi
 
 We resist calling the clustering "momentum." The data establish only that real results carry a little more persistence than the simplest weighted-coin model — not any particular cause. The more important question is whether that persistence is worth anything to a bettor.
 
-### Measured against the price, the persistence disappears
+### Measured against the odds, the persistence disappears
 
-A streak is only useful to a bettor if it tells you something the **odds don't already reflect**. So instead of asking "did the team win?", we score each game against its own price: did the team win *more often than that game's odds implied*? Then we check whether beating the price in recent games says anything about beating the price in the next one.
+A streak is only useful to a bettor if it tells you something the **odds don't already reflect**. So instead of asking "did the team win?", we score each game against its own implied win probability: did the team win *more often than that game's odds implied*? Then we check whether beating the odds in recent games says anything about beating the odds in the next one.
 
 ![Streaks versus the market](output/analysis/team_autocorrelation.png)
 
-*Figure 7: A team's game-to-game consistency, measured two ways, against 10,000 random histories. **Left — raw wins and losses:** the real NFL (red) sits at the far right, reflecting the extra clustering from the previous section. **Right — performance relative to each game's price:** the real NFL falls back into the middle of the random pack. Once you account for what the odds already expected, the apparent pattern is gone.*
+*Figure 7: A team's game-to-game consistency, measured two ways, against 10,000 random histories. **Left — raw wins and losses:** the real NFL (red) sits at the far right, reflecting the extra clustering from the previous section. **Right — performance relative to each game's implied win probability:** the real NFL falls back into the middle of the random pack. Once you account for what the odds already expected, the apparent pattern is gone.*
 
-| Lag | Raw wins/losses (percentile) | Relative to the price (percentile) |
+| Lag | Raw wins/losses (percentile) | Relative to the odds (percentile) |
 |----|----|----|
 | 1 game apart | 99.7% | 80.0% |
 | 2 games apart | 23.1% | 3.8% |
@@ -173,21 +173,21 @@ A streak is only useful to a bettor if it tells you something the **odds don't a
 | 4 games apart | 99.7% | 90.9% |
 | 5 games apart | 95.8% | 67.1% |
 
-**What this shows:** the raw game-to-game correlation is statistically unusual but small in size (about 0.06, versus 0.02 in the random histories) — the same modest clustering as the run-count result, not a strong momentum signal. And it is not something the market missed. Once each result is scored against the price it faced, that positive correlation goes away: across the five gaps the residual values scatter on both sides of the random average (one is even unusually *low*) rather than lining up above it, so there is no consistent leftover persistence. The extra streakiness lives *inside* what the odds already say, not on top of it.
+**What this shows:** the raw game-to-game correlation is statistically unusual but small in size (about 0.06, versus 0.02 in the random histories) — the same modest clustering as the run-count result, not a strong momentum signal. And it is not something the market missed. Once each result is scored against the odds it faced, that positive correlation goes away: across the five gaps the values scatter on both sides of the random average (one is even unusually *low*) rather than lining up above it, so there is no consistent leftover persistence. The extra streakiness lives *inside* what the odds already say, not on top of it.
 
 ### And it doesn't help predict the next game
 
-The comparison above is descriptive. The decisive test is predictive: start from the market's probability, add a team's recent history, and see whether the *next* game becomes easier to predict — on games the model has never seen. If recent form contained anything the next game's price was missing, this is where it would show up.
+The comparison above is descriptive. The decisive test is predictive: start from the game's implied win probability, add a team's recent history, and see whether the *next* game becomes easier to predict — on games the model has never seen. If recent form contained anything the next game's odds were missing, this is where it would show up.
 
-We trained only on earlier games and predicted later ones (never the reverse), comparing five models: the market price alone, and the price plus last game, last 3 games, last 5 games, or all recent history together.
+We trained only on earlier games and predicted later ones (never the reverse), comparing five models: the implied win probability alone, and that probability plus last game, last 3 games, last 5 games, or all recent history together.
 
 ![Market vs History](output/analysis/market_vs_history.png)
 
-*Figure 8: How much each extra ingredient changes prediction accuracy versus using the price alone (lower is better; brown bars are the real NFL, gray bands are the range from pure chance). Every version of "add recent history" lands in the chance range — and slightly worse than the price alone, because the extra detail mostly adds noise.*
+*Figure 8: How much each extra ingredient changes prediction accuracy versus using the odds alone (lower is better; brown bars are the real NFL, gray bands are the range from pure chance). Every version of "add recent history" lands in the chance range — and slightly worse than the odds alone, because the extra detail mostly adds noise.*
 
-**What this shows:** these recent-history features — last game, recent form, streak length — do not improve prediction beyond the closing price. That is a specific, practical result: the obvious things a bettor might read into a team's recent games are already in the odds. It does not prove that *no* signal could ever beat the price; only that these did not.
+**What this shows:** these recent-history features — last game, recent form, streak length — do not improve prediction beyond the closing odds. That is a specific, practical result: the obvious things a bettor might read into a team's recent games are already in the odds. It does not prove that *no* signal could ever beat the odds; only that these did not.
 
-The wins and losses matter. They're just not telling us anything about the *next* game that the price doesn't already say.
+The wins and losses matter. They're just not telling us anything about the *next* game that the odds don't already say.
 
 ---
 
@@ -206,11 +206,11 @@ The "Departs from coin-flip model?" column marks whether the real NFL differs fr
 | **Win streak count** *(raw)* | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | Yes, small |
 | **Loss streak count** *(raw)* | 1,346 | 1,410 | [1,372, 1,449] | 0.1% | 0.001 | Yes, small |
 | **Autocorr lag 1** *(raw)* | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | Yes, small |
-| **Autocorr lag 1** *(vs price)* | 0.012 | 0.000 | [−0.029, 0.030] | 80.0% | 0.401 | No |
-| **Autocorr lag 4** *(vs price)* | 0.022 | 0.000 | [−0.032, 0.033] | 90.9% | 0.182 | No |
+| **Autocorr lag 1** *(vs odds)* | 0.012 | 0.000 | [−0.029, 0.030] | 80.0% | 0.401 | No |
+| **Autocorr lag 4** *(vs odds)* | 0.022 | 0.000 | [−0.032, 0.033] | 90.9% | 0.182 | No |
 | **Recent history (out-of-sample)** | worse | ≈ chance | — | — | — | No |
 
-**Verdict:** Raw win/loss sequences are modestly streakier than weighted coin flips (top rows) — a clear but small departure. Once each result is scored against its own game's price, that extra clustering is no longer visible (the *vs price* rows), and recent-history features provide no out-of-sample improvement over the closing odds. Whatever the streaks contain, the prices appear to reflect it.
+**Verdict:** Raw win/loss sequences are modestly streakier than weighted coin flips (top rows) — a clear but small departure. Once each result is scored against its own game's implied win probability, that extra clustering is no longer visible (the *vs odds* rows), and recent-history features provide no out-of-sample improvement over the closing odds. Whatever the streaks contain, the odds appear to reflect it.
 
 ---
 
@@ -228,21 +228,21 @@ $$
 **What the market already reflects:**
 - ✓ Well-calibrated probabilities (0/19 calibration bins outside CI)
 - ✓ Upsets at the predicted rate (76.7th percentile; 0/8 bins outside CI)
-- ✓ Scored against each game's own price, the extra clustering is no longer detectable (residual comparison not significant at any lag)
+- ✓ Scored against each game's own implied win probability, the extra clustering is no longer detectable (not significant at any lag)
 - ✓ Recent history gives no out-of-sample predictive edge (walk-forward test)
 
-**Why both can be true.** A team's raw record and the prices it is given both reflect the same underlying strength, so raw win/loss sequences naturally look clustered. But when we measure each result against the price it actually faced, the extra clustering is already contained in those prices — there is nothing left over to predict the next result.
+**Why both can be true.** A team's raw record and the odds it is given both reflect the same underlying strength, so raw win/loss sequences naturally look clustered. But when we measure each result against the odds it actually faced, the extra clustering is already contained in those odds — there is nothing left over to predict the next result.
 
 **What this does NOT mean:**
-- ❌ It does **not** mean games are "random" — skill, coaching, and injuries clearly shape outcomes. The prices reflect them.
+- ❌ It does **not** mean games are "random" — skill, coaching, and injuries clearly shape outcomes. The odds reflect them.
 - ❌ It does **not** mean the market is perfect — only that no simple public signal (streaks, recent form) improved on it in this NFL sample.
 - ❌ It does **not** prove "momentum" in a causal sense; we can only say real results show a little more persistence than the simplest model.
 
 **What this DOES mean:**
-- After accounting for the closing price, past outcomes carry **no measurable additional predictive information** in this data.
-- Being right about a game and beating the price are different things. A real pattern that is already in the odds is not an edge.
+- After accounting for the closing odds, past outcomes carry **no measurable additional predictive information** in this data.
+- Being right about who wins and beating the odds are different things: the sportsbook can also see the likely winner and set the odds and payout accordingly. A real pattern that is already in the odds is not an edge.
 
-**A note on the analysis history.** Two earlier iterations of the streak test were wrong in instructive ways. The first compared the real league against a mismatched random baseline, which understated the natural variation and made the effect look larger. The second measured raw wins and losses, which conflates a team's clustering with what its game prices already reflected. The comparison used here scores each result against its own game's price and is backed up by the out-of-sample prediction test. See `docs/persistence_explained.md`.
+**A note on the analysis history.** Two earlier iterations of the streak test were wrong in instructive ways. The first compared the real league against a mismatched random baseline, which understated the natural variation and made the effect look larger. The second measured raw wins and losses, which conflates a team's clustering with what its game odds already reflected. The comparison used here scores each result against its own game's implied win probability and is backed up by the out-of-sample prediction test. See `docs/persistence_explained.md`.
 
 ---
 
@@ -265,13 +265,13 @@ Each $p_i$ reflects:
 
 The market may be **excellent at estimating these changing weights** — better than any individual analyst — without being able to **predict the individual realization** beyond the probability itself.
 
-Our NFL results fit this picture. Each game's price already carries the information you might hope to use — team strength, recent form, matchup — so once you know the current weighting (the line), the next spin looks unpredictable. The prices track the changing odds well enough that the leftover, game-to-game, behaves like chance.
+Our NFL results fit this picture. Each game's odds already carry the information you might hope to use — team strength, recent form, matchup — so once you know the current odds, the next result looks unpredictable. The odds track the shifting true probability well enough that the leftover, game-to-game, behaves like chance.
 
 ---
 
 ## Implications for Sports Betting
 
-The *principle* here isn't specific to football, even though our evidence is. Whenever a market's price is close to the true probability and no extra information improves on it, the odds offered to a bettor are set slightly worse than that true probability. This margin — the "vig," or the sportsbook's cut — applies to every wager regardless of result. The NFL data below is a concrete illustration of what that margin does; it is not a claim that every sport's market behaves identically.
+The *principle* here isn't specific to football, even though our evidence is. Whenever the odds a sportsbook offers imply a probability close to the true one, and no extra information improves on it, those odds are set slightly worse than fair. This margin — the "vig," or the sportsbook's cut — applies to every wager regardless of result. The NFL data below is a concrete illustration of what that margin does; it is not a claim that every sport's market behaves identically.
 
 A common assumption is that a bettor who wins the majority of wagers must be profitable. The margin makes this false, and the mechanism is clearest in dollar terms.
 
@@ -318,7 +318,7 @@ To confirm the effect is not an artifact of two chosen examples, four flat-stake
 
 *Figure: Cumulative profit over eleven seasons for four flat-stake strategies. Every trajectory trends downward. No selection rule tested — favorites, underdogs, even matchups, or heavy favorites — returns to break-even.*
 
-The simulation mean is approximately **–3.7% for every strategy**, matching the average sportsbook margin in this data (3.8%). The expected return of any strategy equals the negative of the vig. Favorites, underdogs, and even matchups converge to the same losing rate because, beyond the price, the outcome carries no exploitable information and the margin is deducted from every wager. The heavy-favorite strategy returned above its simulation mean yet still lost \$1,268, illustrating that a high win rate does not imply a profit.
+The simulation mean is approximately **–3.7% for every strategy**, matching the average sportsbook margin in this data (3.8%). The expected return of any strategy equals the negative of the vig. Favorites, underdogs, and even matchups converge to the same losing rate because, beyond the odds, the outcome carries no exploitable information and the margin is deducted from every wager. The heavy-favorite strategy returned above its simulation mean yet still lost \$1,268, illustrating that a high win rate does not imply a profit.
 
 ### Why losses are guaranteed over enough bets
 
@@ -389,13 +389,13 @@ python scripts/08_run_all_analyses.py
 
 ![Autocorrelation by lag](output/analysis/team_autocorr_by_lag.png)
 
-*Figure 10: Team consistency at lags 1–5, measured two ways. Raw win/loss (red) rides above the random range at several lags; measured against each game's price (green), the values fall within the random band and scatter on both sides of the average rather than lining up above it. The raw pattern does not survive once each result is scored against its price — at any of the gaps, not just one game apart.*
+*Figure 10: Team consistency at lags 1–5, measured two ways. Raw win/loss (red) rides above the random range at several lags; measured against each game's implied win probability (green), the values fall within the random band and scatter on both sides of the average rather than lining up above it. The raw pattern does not survive once each result is scored against its odds — at any of the gaps, not just one game apart.*
 
 ### Game-Level Residual Autocorrelation
 
 ![Residual Autocorrelation](output/analysis/residuals_autocorrelation.png)
 
-*Figure 11: Autocorrelation of residuals $r_i = Y_i - p_i$ on the global game sequence, lags 1–10. All lags fall within the ±2σ range — no serial structure once the line is removed. (This mixes all teams, so it complements the team-level residual test in Test 2.)*
+*Figure 11: Autocorrelation of residuals $r_i = Y_i - p_i$ on the global game sequence, lags 1–10. All lags fall within the ±2σ range — no serial structure once each game's implied win probability is accounted for. (This mixes all teams, so it complements the team-level test in "Measured against the odds.")*
 
 ### Residual Distribution
 
