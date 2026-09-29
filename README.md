@@ -4,15 +4,15 @@
 
 ---
 
-A bettor isn't really competing against chance. A bettor is competing against a **price** — the odds, which already reflect what the market knows about each game. So the useful question isn't "can you predict the game?" It's a harder one: **can any piece of information help you once it's already baked into the price?**
+A bettor isn't really competing against chance. A bettor is competing against a **price** — the odds, which already reflect what the market knows about each game. So the useful question isn't "can you predict the game?" It's a harder one: **do you know something about the game that the price hasn't already captured?** Information only becomes an edge if it isn't in the odds yet.
 
 We test that with NFL betting data. For each of 2,946 games (2011–2021) the closing line implies a home-win probability. We build 10,000 synthetic NFL histories that keep those exact probabilities but decide each game with a weighted coin flip, and ask what, if anything, separates the real NFL from the coin-flip version.
 
 Three findings, in plain terms:
 
 - **NFL games are weighted coin flips, not 50/50 coin flips.** The odds are well-calibrated, and "upsets" happen about as often as the prices say they should.
-- **Real results are slightly streakier than the simplest weighted-coin model** — the NFL has about 5% fewer separate winning and losing runs than the random histories, so runs last a little longer. It's a small, real amount of extra clustering, not a dramatic "hot hand."
-- **Measured against the price, that extra clustering carries no usable information.** Once you score each result against the same game's market probability, the persistence is gone, and knowing a team's recent form does not improve predictions of future games beyond what the odds already say.
+- **Real results are slightly streakier than the simplest weighted-coin model** — the NFL has about 5% fewer separate winning and losing runs than the random histories. Concretely, a run of wins or losses lasts about 2.2 games on average, versus about 2.1 in the coin-flip model: roughly a tenth of a game longer. It's a small, consistent amount of extra clustering, not a dramatic "hot hand."
+- **Scored against the price, that extra clustering carries no usable information.** Once you measure each result against the same game's market probability, the persistence no longer stands out, and knowing a team's recent form does not improve predictions of future games beyond what the closing odds already say.
 
 The NFL is the evidence here, so these specific numbers are about the NFL. But the lesson is general to sports betting: being right about a game is not the same as being more right than the price.
 
@@ -123,14 +123,9 @@ Each simulation uses the **exact same** $p_i$ values from the real NFL — same 
 
 These synthetic histories let us ask: **what patterns would we expect to see in a purely random NFL?** And critically: **does the real NFL deviate from that?**
 
-The market probability $p_i$ already encodes:
-- Team strength differentials
-- Home field advantage  
-- Injuries, weather, travel, rest
-- Coaching matchups
-- Historical performance
+Market participants have access to the kinds of information that plausibly move a line — team strength, home field, injuries, weather, travel, rest, matchups, past performance — and the closing price is their collective estimate. We can't see from this data exactly what any given price incorporated or why it settled where it did; we only have the final number.
 
-We are **not** testing whether these factors matter. We are testing whether, **after the market has already priced them in**, any additional structure remains.
+We are **not** testing whether those factors matter. We are testing whether, given the closing price, past outcomes reveal any additional structure the price didn't already reflect.
 
 ---
 
@@ -150,15 +145,17 @@ The average home team had a 56.6% win probability, but individual games ranged f
 
 ### Real games are a little streakier than the model
 
-Do wins and losses cluster more than weighted coin flips would produce? A little. Across all teams, the real NFL has about **5% fewer separate winning and losing runs** than the average random history — 1,338 winning runs versus a simulated 1,408, and 1,346 losing runs versus 1,410. With the same number of games but fewer runs, each run lasts slightly longer on average.
+Do wins and losses cluster more than weighted coin flips would produce? A little. Across all teams, the real NFL has about **5% fewer separate winning and losing runs** than the average random history — 1,338 winning runs versus a simulated 1,408, and 1,346 losing runs versus 1,410. In everyday terms: a run of wins or losses lasts about **2.2 games** in the real NFL versus about **2.1** in the coin-flip model — a difference of roughly a tenth of a game per run.
 
-That is a small, real amount of extra clustering — enough to stand out clearly against 10,000 random histories ($p < 0.001$), but far from a dramatic "hot hand." The single longest streaks tell the same modest story:
+The gap is tiny per run, but it is consistent enough across 2,946 games to stand out clearly from the 10,000 random histories ($p < 0.001$). So the clustering is real; it is also small.
+
+A separate question is whether the NFL's most *spectacular* streaks are surprising. They are not:
 
 ![Longest-streak distributions](output/analysis/team_max_streaks.png)
 
-*Figure 6: The longest winning (left) and losing (right) run produced by each random history, with the real NFL marked. The real NFL's longest runs — 21 wins, 20 losses — are toward the high end of what random weighted coin flips already produce, but well inside the range (92nd and 89th percentiles). Takeaway: real streaks are a bit longer than typical, not off the charts.*
+*Figure 6: The single longest winning (left) and losing (right) run produced by each random history, with the real NFL marked. The NFL's longest runs — 21 straight wins, 20 straight losses — sit at the 92nd and 89th percentiles: on the high side, but comfortably inside what weighted coin flips produce on their own. A jaw-dropping streak is not, by itself, evidence of anything beyond chance. The small run-count gap above is the real signal; the record streaks are not.*
 
-We should resist calling this "momentum." All we can safely say is that real results carry a little more persistence than the simplest weighted-coin model. The more important question is whether that persistence is worth anything to a bettor.
+We resist calling the clustering "momentum." The data establish only that real results carry a little more persistence than the simplest weighted-coin model — not any particular cause. The more important question is whether that persistence is worth anything to a bettor.
 
 ### Measured against the price, the persistence disappears
 
@@ -176,7 +173,7 @@ A streak is only useful to a bettor if it tells you something the **odds don't a
 | 4 games apart | 99.7% | 90.9% |
 | 5 games apart | 95.8% | 67.1% |
 
-**What this shows:** the raw clustering is real (left column), but it is not a signal the market has missed. Once each result is judged against the price it faced, the real NFL looks like the random histories at every gap. The extra streakiness lives *inside* what the odds already say, not on top of it.
+**What this shows:** the raw game-to-game correlation is statistically unusual but small in size (about 0.06, versus 0.02 in the random histories) — the same modest clustering as the run-count result, not a strong momentum signal. And it is not something the market missed. Once each result is scored against the price it faced, that positive correlation goes away: across the five gaps the residual values scatter on both sides of the random average (one is even unusually *low*) rather than lining up above it, so there is no consistent leftover persistence. The extra streakiness lives *inside* what the odds already say, not on top of it.
 
 ### And it doesn't help predict the next game
 
@@ -188,9 +185,9 @@ We trained only on earlier games and predicted later ones (never the reverse), c
 
 *Figure 8: How much each extra ingredient changes prediction accuracy versus using the price alone (lower is better; brown bars are the real NFL, gray bands are the range from pure chance). Every version of "add recent history" lands in the chance range — and slightly worse than the price alone, because the extra detail mostly adds noise.*
 
-**What this shows:** knowing a team's recent form does not improve on the price. This is the practical companion to the previous section — there is no leftover signal to find, and none to bet on.
+**What this shows:** these recent-history features — last game, recent form, streak length — do not improve prediction beyond the closing price. That is a specific, practical result: the obvious things a bettor might read into a team's recent games are already in the odds. It does not prove that *no* signal could ever beat the price; only that these did not.
 
-The wins and losses matter. They're just not telling us anything the price doesn't already say.
+The wins and losses matter. They're just not telling us anything about the *next* game that the price doesn't already say.
 
 ---
 
@@ -198,20 +195,22 @@ The wins and losses matter. They're just not telling us anything the price doesn
 
 Each null distribution is built by computing the identical statistic within each of the 10,000 simulated leagues (team-averaged quantities are averaged across teams separately within each league; maxima use the distribution of per-league maxima).
 
-| Test | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ | Beats the model? |
+The "Departs from coin-flip model?" column marks whether the real NFL differs from the weighted-coin baseline — not whether it beats the market.
+
+| Test | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ | Departs from model? |
 |------|----------|---------|--------|------------|---------------|------------|
 | **Total home wins** | 1,644 | 1,666 | [1,617, 1,716] | 18.3% | — | No |
 | **Calibration bins** | 0 / 19 outside CI | ~1 / 19 | — | — | — | No |
 | **Total upsets** | 997 | 978.5 | [930, 1,027] | 76.7% | — | No |
 | **Upset bins** | 0 / 8 outside CI | ~0.4 / 8 | — | — | — | No |
-| **Win streak count** *(raw)* | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | streaks real |
-| **Loss streak count** *(raw)* | 1,346 | 1,410 | [1,372, 1,449] | 0.1% | 0.001 | streaks real |
-| **Autocorr lag 1** *(raw)* | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | streaks real |
-| **Autocorr lag 1** *(residual)* | 0.012 | 0.000 | [−0.029, 0.030] | 80.0% | 0.401 | No |
-| **Autocorr lag 4** *(residual)* | 0.022 | 0.000 | [−0.032, 0.033] | 90.9% | 0.182 | No |
+| **Win streak count** *(raw)* | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | Yes, small |
+| **Loss streak count** *(raw)* | 1,346 | 1,410 | [1,372, 1,449] | 0.1% | 0.001 | Yes, small |
+| **Autocorr lag 1** *(raw)* | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | Yes, small |
+| **Autocorr lag 1** *(vs price)* | 0.012 | 0.000 | [−0.029, 0.030] | 80.0% | 0.401 | No |
+| **Autocorr lag 4** *(vs price)* | 0.022 | 0.000 | [−0.032, 0.033] | 90.9% | 0.182 | No |
 | **Recent history (out-of-sample)** | worse | ≈ chance | — | — | — | No |
 
-**Verdict:** Raw win/loss sequences are modestly streakier than weighted coin flips (top rows) — real, but small. Once each result is scored against its own game's price, that extra clustering is no longer visible (residual rows), and recent history provides no out-of-sample edge. Whatever the streaks contain, the prices already reflect it.
+**Verdict:** Raw win/loss sequences are modestly streakier than weighted coin flips (top rows) — a clear but small departure. Once each result is scored against its own game's price, that extra clustering is no longer visible (the *vs price* rows), and recent-history features provide no out-of-sample improvement over the closing odds. Whatever the streaks contain, the prices appear to reflect it.
 
 ---
 
@@ -224,7 +223,7 @@ Y_i \mid p_i \overset{?}{\sim} \text{Bernoulli}(p_i)
 $$
 
 **What is genuinely there:**
-- A small amount of extra clustering. Real NFL runs of wins and losses are about 5% fewer — and therefore a bit longer — than the weighted-coin model produces. It is a modest effect, not a dramatic hot hand, and we can't attribute it to any specific cause.
+- A small amount of extra clustering. Real NFL runs of wins and losses are about 5% fewer than the weighted-coin model produces — runs lasting about 2.2 games on average instead of 2.1. It is a clear but modest effect, not a dramatic hot hand, and we can't attribute it to any specific cause.
 
 **What the market already reflects:**
 - ✓ Well-calibrated probabilities (0/19 calibration bins outside CI)
@@ -390,7 +389,7 @@ python scripts/08_run_all_analyses.py
 
 ![Autocorrelation by lag](output/analysis/team_autocorr_by_lag.png)
 
-*Figure 10: Team consistency at lags 1–5, measured two ways. Raw win/loss (red) rides above the random range at several lags; measured against each game's price (green), every lag falls inside the random band. The apparent pattern is already contained in the prices at every lag, not just one game apart.*
+*Figure 10: Team consistency at lags 1–5, measured two ways. Raw win/loss (red) rides above the random range at several lags; measured against each game's price (green), the values fall within the random band and scatter on both sides of the average rather than lining up above it. The raw pattern does not survive once each result is scored against its price — at any of the gaps, not just one game apart.*
 
 ### Game-Level Residual Autocorrelation
 
