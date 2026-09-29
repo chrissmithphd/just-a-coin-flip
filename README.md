@@ -1,6 +1,6 @@
-# Beating the Game Isn't Beating the Price
+# Is Sports Betting Just a Coin Flip?
 
-*A sports-betting question — can information help you once the odds already reflect it? — tested on 2,946 NFL games (2011–2021).*
+*Can information help you once the odds already reflect it? A betting question, tested on 2,946 NFL games (2011–2021).*
 
 ---
 
