@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Tuple, Dict
 
+MIN_GAMES = 50
+
 
 def load_data():
     """Load real games and Monte Carlo simulations."""
@@ -43,8 +45,18 @@ def calibration_by_bins(games, mc_outcomes, bin_width=0.05):
     p_home = np.array([g['p_home_vig_free'] for g in games])
     y_real = np.array([int(g['home_win']) for g in games])
 
-    # Define bins
-    bin_edges = np.arange(0, 1 + bin_width, bin_width)
+    # Define bins, then merge sparse tail bins inward so every bin has at least
+    # MIN_GAMES games; a 2-game bin otherwise dominates the residual plot.
+    bin_edges = list(np.round(np.arange(0, 1 + bin_width, bin_width), 4))
+
+    def count(lo, hi):
+        return int(((p_home >= lo) & (p_home < hi)).sum()) if hi < 1 else int((p_home >= lo).sum())
+
+    while len(bin_edges) > 2 and count(bin_edges[0], bin_edges[1]) < MIN_GAMES:
+        del bin_edges[1]
+    while len(bin_edges) > 2 and count(bin_edges[-2], bin_edges[-1]) < MIN_GAMES:
+        del bin_edges[-2]
+    bin_edges = np.array(bin_edges)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     n_bins = len(bin_centers)
 
@@ -148,24 +160,35 @@ def plot_calibration(results, output_path):
     ax1.set_xlim(0, 1)
     ax1.set_ylim(0, 1)
 
-    # Residuals (real - expected)
+    # Residuals (real - expected), with the 95% range a weighted coin flip
+    # produces in each bin, so small bins visibly carry wide uncertainty.
     residuals = np.array(win_rate_real) - np.array(p_mean)
+    lo = np.array(ci_lower) - np.array(p_mean)
+    hi = np.array(ci_upper) - np.array(p_mean)
+    x = np.arange(len(bins))
 
     ax2.axhline(0, color='red', linestyle='--', linewidth=2, alpha=0.5)
-    ax2.bar(range(len(bins)), residuals, color=['darkred' if b['outside_ci'] else 'steelblue'
-                                                 for b in bins],
-            edgecolor='black', alpha=0.7)
-    ax2.set_xlabel('Probability Bin', fontsize=13, fontweight='bold')
-    ax2.set_ylabel('Residual (Actual - Expected)', fontsize=13, fontweight='bold')
-    ax2.set_title('Calibration Residuals by Bin\n(red = outside 95% CI)',
+    ax2.bar(x, hi - lo, bottom=lo, width=0.7, color='lightgray', edgecolor='gray',
+            alpha=0.8, label='95% range from chance')
+    ax2.scatter(x, residuals, s=70, zorder=5,
+                color=['darkred' if b['outside_ci'] else 'steelblue' for b in bins],
+                edgecolors='black', label='Real NFL (actual − expected)')
+    ax2.set_xlabel('Market-implied win probability', fontsize=13, fontweight='bold')
+    ax2.set_ylabel('Actual − expected win rate', fontsize=13, fontweight='bold')
+    ax2.set_title('Calibration Gaps vs. Chance\n(every point inside its gray range)',
                   fontsize=14, fontweight='bold')
+    ax2.set_ylim(lo.min() - 0.02, hi.max() + 0.04)
+    ax2.legend(fontsize=10, loc='upper right', ncol=2)
     ax2.grid(axis='y', alpha=0.3)
 
-    # Label x-axis with probability ranges
-    tick_positions = range(len(bins))
-    tick_labels = [f"{b['bin_start']:.2f}-\n{b['bin_end']:.2f}" for b in bins]
-    ax2.set_xticks(tick_positions)
-    ax2.set_xticklabels(tick_labels, fontsize=8)
+    def lab(b):
+        if b['bin_start'] == 0:
+            return f"<{b['bin_end']:.2f}\n(n={b['n_games']})"
+        if b['bin_end'] >= 1:
+            return f"≥{b['bin_start']:.2f}\n(n={b['n_games']})"
+        return f"{b['bin_start']:.2f}-\n{b['bin_end']:.2f}"
+    ax2.set_xticks(x)
+    ax2.set_xticklabels([lab(b) for b in bins], fontsize=8)
 
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches='tight')

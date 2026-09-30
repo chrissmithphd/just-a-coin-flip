@@ -77,9 +77,10 @@ middle of the random cloud, 80th percentile).
 A correlation test is descriptive; the decisive check is prediction. The
 walk-forward test (`scripts/10_market_vs_history.py`) gives a model the market
 probability plus recent history and asks whether later games become easier to
-predict. They do not — adding history slightly *worsens* out-of-sample log loss,
-exactly like the random leagues. No residual correlation to find, no prediction
-to gain.
+predict. They do not — out-of-sample log loss changes by +0.00001 to +0.0003,
+effectively zero and inside the range the random leagues produce. A planted
+effect as small as a 3-point next-game boost after a toss-up win would have
+been detected, so this is a meaningful null, not a blind spot.
 
 ---
 

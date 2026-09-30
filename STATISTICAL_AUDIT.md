@@ -341,3 +341,10 @@ Compare $T_{\text{real}}$ to $\\{T_1, \ldots, T_{10000}\\}$.
 **The analysis contains four implementation errors that invalidate multiple key findings.** Three tests are correctly implemented but suffer from multiple comparison issues. Even after corrections, the language overclaims what hypothesis tests establish.
 
 **Recommended action:** Fix the four errors, rerun analyses, report corrected percentiles, add multiple comparison adjustments, and revise interpretive language to match what the tests actually show.
+
+---
+
+## Addendum (2026-09-30)
+
+- **Market-vs-history bug.** `scripts/10_market_vs_history.py` built predictions as `inv_logit(predict_proba + offset)`: it added a *probability* to a log-odds offset, shifting every "market + history" forecast by the same amount. All models showed an identical +0.026 log-loss penalty in real and simulated data, so the original figure carried no information. Fixed by using `offset + X @ beta`; the pipeline was vectorized and rerun with 10,000 simulations, plus a planted-effect power check. Corrected result: recent history changes out-of-sample log loss by +0.00001 to +0.0003, inside the chance range.
+- **Calibration bins.** The 19-bin version included bins with 2 and 21 games, which dominated the residual plot. Sparse tail bins are now merged so each has ≥50 games (15 bins); still 0 outside the 95% range.

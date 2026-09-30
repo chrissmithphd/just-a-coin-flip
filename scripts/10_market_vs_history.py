@@ -1,547 +1,283 @@
 #!/usr/bin/env python3
 """
-Market vs History: Predictive Test
+Market vs History: out-of-sample predictive test.
 
-Does recent team performance contain information beyond what the
-betting market already knows?
+Does a team's recent history improve prediction of its next game beyond the
+closing-odds implied probability? For each team-game we build features from
+that team's PREVIOUS games only (no current/future information):
 
-Test whether adding recent history features improves out-of-sample
-prediction beyond the market probability alone.
+    prev_1_residual   last game's (result - implied probability)
+    prev_3_residual   mean residual over the last 3 games (fewer if unavailable)
+    prev_5_residual   mean residual over the last 5 games
+    prev_win          last game won (1) or lost (0)
+    streak_length     current streak, + for wins / - for losses
+
+Model: logistic regression with logit(implied probability) as a fixed offset,
+so the market forecast is the baseline and features can only adjust it:
+
+    logit P(win) = logit(p_market) + X @ beta
+
+Validation: expanding walk-forward. Rows are ordered by game; fold k trains on
+all rows before the k-th test block and predicts that block. Metrics (log loss,
+Brier) are computed on the pooled out-of-sample predictions.
+
+The identical pipeline is run on every matched Bernoulli history, giving a null
+distribution for "improvement over market alone" that arises purely by chance.
 """
 
 import json
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
-import warnings
-warnings.filterwarnings('ignore')
 
-try:
-    import statsmodels.api as sm
-    HAS_STATSMODELS = True
-except ImportError:
-    from sklearn.linear_model import LogisticRegression
-    HAS_STATSMODELS = False
+N_FOLDS = 5
+N_SIMS = 10000
+FEATURE_SETS = {
+    'plus_last_1': ['prev_1_residual'],
+    'plus_last_3': ['prev_3_residual'],
+    'plus_last_5': ['prev_5_residual'],
+    'plus_all': ['prev_1_residual', 'prev_3_residual', 'prev_5_residual',
+                 'prev_win', 'streak_length'],
+}
+EPS = 1e-10
 
 
 def load_data():
-    """Load real games and Monte Carlo simulations."""
     with open('data/processed/nfl_games_processed.json') as f:
         games = json.load(f)
-
-    mc_data = np.load('data/simulated/monte_carlo_outcomes.npz')
-    mc_outcomes = mc_data['outcomes']
-
-    return games, mc_outcomes
+    mc = np.load('data/simulated/monte_carlo_outcomes.npz')['outcomes']
+    return games, mc
 
 
-def build_team_histories(games, outcomes):
+def build_rows(games):
     """
-    Build chronological game sequences for each team with outcomes.
-
-    Args:
-        games: List of game dicts
-        outcomes: Array of home win indicators (n_games,) or (n_sims, n_games)
-
-    Returns:
-        Dict mapping team to list of (game_idx, won, p_win, game_date)
+    One row per team-game that has at least one prior game for that team.
+    Returns arrays describing each row and the indices of that team's previous
+    games (padded with -1), ordered by game index.
     """
-    is_mc = len(outcomes.shape) == 2
-    team_histories = defaultdict(list)
-
-    for i, game in enumerate(games):
-        game_date = game['game_datetime']
-
-        # Home team
-        home_team = game['home_team']
-        p_home = game['p_home_vig_free']
-
-        if is_mc:
-            home_outcomes = outcomes[:, i]  # shape (n_sims,)
-            team_histories[home_team].append({
-                'game_idx': i,
-                'date': game_date,
-                'won': home_outcomes,
-                'p_win': p_home,
-                'is_home': True
-            })
-        else:
-            home_won = int(outcomes[i])
-            team_histories[home_team].append({
-                'game_idx': i,
-                'date': game_date,
-                'won': home_won,
-                'p_win': p_home,
-                'is_home': True
-            })
-
-        # Away team
-        away_team = game['away_team']
-        p_away = 1 - p_home
-
-        if is_mc:
-            away_outcomes = 1 - outcomes[:, i]
-            team_histories[away_team].append({
-                'game_idx': i,
-                'date': game_date,
-                'won': away_outcomes,
-                'p_win': p_away,
-                'is_home': False
-            })
-        else:
-            away_won = int(1 - outcomes[i])
-            team_histories[away_team].append({
-                'game_idx': i,
-                'date': game_date,
-                'won': away_won,
-                'p_win': p_away,
-                'is_home': False
-            })
-
-    # Sort each team's history by date
-    for team in team_histories:
-        team_histories[team] = sorted(team_histories[team], key=lambda x: x['date'])
-
-    return team_histories
-
-
-def compute_team_features(team_history, game_idx, sim_idx=None):
-    """
-    Compute recent-history features for a team at a specific game.
-    Uses only games BEFORE game_idx.
-
-    Args:
-        team_history: List of team's games (sorted chronologically)
-        game_idx: Index of current game (to predict)
-        sim_idx: Simulation index (for MC data), None for real data
-
-    Returns:
-        Dict of features, or None if insufficient history
-    """
-    # Find position of current game in team's history
-    current_pos = None
-    for pos, game_info in enumerate(team_history):
-        if game_info['game_idx'] == game_idx:
-            current_pos = pos
-            break
-
-    if current_pos is None or current_pos == 0:
-        return None  # No prior games
-
-    # Collect prior games
-    prior_games = team_history[:current_pos]
-
-    if len(prior_games) == 0:
-        return None
-
-    # Extract outcomes and probabilities
-    if sim_idx is not None:
-        # MC data: outcomes are arrays
-        prior_outcomes = np.array([g['won'][sim_idx] for g in prior_games])
-        prior_probs = np.array([g['p_win'] for g in prior_games])
-    else:
-        # Real data
-        prior_outcomes = np.array([g['won'] for g in prior_games])
-        prior_probs = np.array([g['p_win'] for g in prior_games])
-
-    # Compute residuals
-    residuals = prior_outcomes - prior_probs
-
-    # Features
-    features = {}
-
-    # Last game residual
-    features['prev_1_residual'] = residuals[-1]
-
-    # Rolling averages
-    if len(residuals) >= 3:
-        features['prev_3_residual'] = residuals[-3:].mean()
-    else:
-        features['prev_3_residual'] = residuals.mean()
-
-    if len(residuals) >= 5:
-        features['prev_5_residual'] = residuals[-5:].mean()
-    else:
-        features['prev_5_residual'] = residuals.mean()
-
-    # Previous game outcome
-    features['prev_win'] = int(prior_outcomes[-1])
-
-    # Current streak length (signed: positive for wins, negative for losses)
-    streak = 0
-    for outcome in reversed(prior_outcomes):
-        if outcome == prior_outcomes[-1]:
-            streak += 1
-        else:
-            break
-    features['streak_length'] = streak if prior_outcomes[-1] == 1 else -streak
-
-    return features
-
-
-def build_dataset(games, outcomes, team_histories):
-    """
-    Build dataset with features for each game.
-
-    Returns:
-        List of dicts with {game_idx, y, p_market, features}
-    """
-    is_mc = len(outcomes.shape) == 2
-    n_sims = outcomes.shape[0] if is_mc else 1
-
-    dataset = []
-
-    for game_idx, game in enumerate(games):
-        home_team = game['home_team']
-        away_team = game['away_team']
-        p_home = game['p_home_vig_free']
-
-        if is_mc:
-            y_home = outcomes[:, game_idx]  # shape (n_sims,)
-        else:
-            y_home = outcomes[game_idx]
-
-        # Get features for home team
-        for sim_idx in range(n_sims) if is_mc else [None]:
-            features_home = compute_team_features(
-                team_histories[home_team], game_idx, sim_idx
-            )
-
-            if features_home is not None:
-                record = {
-                    'game_idx': game_idx,
-                    'team': home_team,
-                    'y': y_home[sim_idx] if is_mc else y_home,
-                    'p_market': p_home,
-                    'features': features_home,
-                    'sim_idx': sim_idx
-                }
-                dataset.append(record)
-
-        # Get features for away team
-        for sim_idx in range(n_sims) if is_mc else [None]:
-            features_away = compute_team_features(
-                team_histories[away_team], game_idx, sim_idx
-            )
-
-            if features_away is not None:
-                record = {
-                    'game_idx': game_idx,
-                    'team': away_team,
-                    'y': (1 - y_home[sim_idx]) if is_mc else (1 - y_home),
-                    'p_market': 1 - p_home,
-                    'features': features_away,
-                    'sim_idx': sim_idx
-                }
-                dataset.append(record)
-
-    return dataset
-
-
-def logit(p):
-    """Logit transform with clipping."""
-    p = np.clip(p, 1e-10, 1 - 1e-10)
-    return np.log(p / (1 - p))
-
-
-def inv_logit(x):
-    """Inverse logit."""
-    return 1 / (1 + np.exp(-x))
-
-
-def fit_model_with_offset(y, X, offset, method='statsmodels'):
-    """
-    Fit logistic regression with offset.
-
-    Returns:
-        Fitted model (callable that takes X, offset and returns predictions)
-    """
-    if method == 'statsmodels' and HAS_STATSMODELS:
-        model = sm.GLM(y, X, family=sm.families.Binomial(), offset=offset)
-        result = model.fit(disp=0)
-
-        def predict_fn(X_new, offset_new):
-            linear = result.predict(X_new) + offset_new
-            return inv_logit(linear)
-
-        return predict_fn, result.params
-
-    else:
-        # Fallback: manual implementation
-        # logit(p) = offset + X @ beta
-        # We fit beta by logistic regression on (y, X) with offset absorbed
-
-        # Transform: new_y = logit(p) - offset
-        # Approximate by fitting X to predict (y - inv_logit(offset))
-
-        # Simpler: fit without offset, predictions = inv_logit(logit(p_market) + X @ beta)
-        from sklearn.linear_model import LogisticRegression
-        model = LogisticRegression(penalty=None, max_iter=1000)
-        model.fit(X, y)
-
-        def predict_fn(X_new, offset_new):
-            logit_pred = model.predict_log_proba(X_new)[:, 1] + offset_new
-            return inv_logit(logit_pred)
-
-        return predict_fn, model.coef_[0]
-
-
-def expanding_walk_forward_cv(dataset, feature_sets, n_folds=5):
-    """
-    Expanding window walk-forward validation.
-
-    For each fold:
-    - Train on games 0 to split_idx
-    - Test on games split_idx to split_idx + fold_size
-    - Expand training set for next fold
-
-    Args:
-        dataset: List of records with features
-        feature_sets: Dict mapping name to list of feature keys
-        n_folds: Number of folds
-
-    Returns:
-        Dict mapping feature_set_name to out-of-sample predictions
-    """
-    # Sort by game index
-    dataset = sorted(dataset, key=lambda x: x['game_idx'])
-
-    n = len(dataset)
-    fold_size = n // (n_folds + 1)  # Reserve first portion for initial training
-
-    results = {name: {'y_true': [], 'y_pred': []} for name in feature_sets}
-
-    for fold in range(n_folds):
-        train_end = fold_size * (fold + 1)
-        test_start = train_end
-        test_end = test_start + fold_size
-
-        if test_end > n:
-            test_end = n
-
-        train_data = dataset[:train_end]
-        test_data = dataset[test_start:test_end]
-
-        if len(test_data) == 0:
-            break
-
-        # Prepare train data
-        y_train = np.array([d['y'] for d in train_data])
-        p_market_train = np.array([d['p_market'] for d in train_data])
-        offset_train = logit(p_market_train)
-
-        # Prepare test data
-        y_test = np.array([d['y'] for d in test_data])
-        p_market_test = np.array([d['p_market'] for d in test_data])
-        offset_test = logit(p_market_test)
-
-        # Fit and evaluate each feature set
-        for name, feature_keys in feature_sets.items():
-            if name == 'market_only':
-                # Just use market probability
-                preds = p_market_test
-            else:
-                # Build feature matrix
-                X_train = np.column_stack([
-                    [d['features'][k] for d in train_data]
-                    for k in feature_keys
-                ])
-                X_test = np.column_stack([
-                    [d['features'][k] for d in test_data]
-                    for k in feature_keys
-                ])
-
-                # Fit model with offset
-                predict_fn, _ = fit_model_with_offset(
-                    y_train, X_train, offset_train,
-                    method='statsmodels' if HAS_STATSMODELS else 'sklearn'
-                )
-
-                # Predict
-                preds = predict_fn(X_test, offset_test)
-
-            results[name]['y_true'].extend(y_test)
-            results[name]['y_pred'].extend(preds)
-
-    return results
-
-
-def compute_metrics(y_true, y_pred):
-    """Compute log loss and Brier score."""
-    y_true = np.array(y_true)
-    y_pred = np.clip(y_pred, 1e-10, 1 - 1e-10)
-
-    # Log loss
-    log_loss = -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
-
-    # Brier score
-    brier = np.mean((y_true - y_pred) ** 2)
-
-    return {'log_loss': log_loss, 'brier': brier}
-
-
-def run_experiment(games, outcomes, n_mc_sims=1000):
-    """
-    Run the full experiment on real data and MC simulations.
-
-    Returns:
-        Dict with results for real and MC
-    """
-    print(f"\n{'='*70}")
-    print("MARKET VS HISTORY EXPERIMENT")
-    print(f"{'='*70}\n")
-
-    # Define feature sets
-    feature_sets = {
-        'market_only': [],
-        'plus_last_1': ['prev_1_residual'],
-        'plus_last_3': ['prev_3_residual'],
-        'plus_last_5': ['prev_5_residual'],
-        'plus_all': ['prev_1_residual', 'prev_3_residual', 'prev_5_residual',
-                     'prev_win', 'streak_length']
+    p_home = np.array([g['p_home_vig_free'] for g in games])
+    order = defaultdict(list)
+    for i, g in enumerate(games):
+        order[g['home_team']].append((i, True))
+        order[g['away_team']].append((i, False))
+
+    rows = []  # (game_idx, is_home, prev game idxs (up to 5), prev is_home flags, all prior count)
+    for team, lst in order.items():
+        idx = [a for a, _ in lst]
+        ih = [b for _, b in lst]
+        for k in range(1, len(lst)):
+            rows.append((idx[k], ih[k], idx[:k], ih[:k]))
+    rows.sort(key=lambda r: r[0])
+
+    n = len(rows)
+    game = np.array([r[0] for r in rows])
+    is_home = np.array([r[1] for r in rows], dtype=bool)
+    p = np.where(is_home, p_home[game], 1 - p_home[game])
+
+    # Previous 5 games (most recent first), padded with -1
+    prev_idx = np.full((n, 5), -1)
+    prev_home = np.zeros((n, 5), dtype=bool)
+    # Full prior history for streak computation, capped at 40 games back
+    MAXS = 40
+    hist_idx = np.full((n, MAXS), -1)
+    hist_home = np.zeros((n, MAXS), dtype=bool)
+    for j, (_, _, pidx, pih) in enumerate(rows):
+        rp, rh = pidx[::-1], pih[::-1]
+        m5 = min(5, len(rp))
+        prev_idx[j, :m5] = rp[:m5]
+        prev_home[j, :m5] = rh[:m5]
+        ms = min(MAXS, len(rp))
+        hist_idx[j, :ms] = rp[:ms]
+        hist_home[j, :ms] = rh[:ms]
+
+    return {
+        'game': game, 'is_home': is_home, 'p': p, 'p_home': p_home,
+        'prev_idx': prev_idx, 'prev_home': prev_home,
+        'hist_idx': hist_idx, 'hist_home': hist_home,
     }
 
-    # Real NFL
-    print("Processing real NFL data...")
-    y_real = np.array([int(g['home_win']) for g in games])
-    team_histories_real = build_team_histories(games, y_real)
-    dataset_real = build_dataset(games, y_real, team_histories_real)
-    print(f"  Dataset: {len(dataset_real)} team-games with sufficient history")
 
-    print("\nRunning expanding walk-forward cross-validation...")
-    results_real = expanding_walk_forward_cv(dataset_real, feature_sets, n_folds=5)
+def team_view(R, home_win, idx, home):
+    """Team result (1=win) and team implied prob for game indices idx (-1 -> nan)."""
+    valid = idx >= 0
+    safe = np.where(valid, idx, 0)
+    hw = home_win[safe].astype(float)
+    res = np.where(home, hw, 1 - hw)
+    ph = R['p_home'][safe]
+    pt = np.where(home, ph, 1 - ph)
+    res = np.where(valid, res, np.nan)
+    pt = np.where(valid, pt, np.nan)
+    return res, pt
 
-    metrics_real = {}
-    for name in feature_sets:
-        metrics_real[name] = compute_metrics(
-            results_real[name]['y_true'],
-            results_real[name]['y_pred']
-        )
 
-    print("\nReal NFL out-of-sample performance:")
-    baseline_ll = metrics_real['market_only']['log_loss']
-    for name in feature_sets:
-        ll = metrics_real[name]['log_loss']
-        delta = ll - baseline_ll
-        print(f"  {name:20s}: log_loss={ll:.4f}  (Δ={delta:+.4f})")
-
-    # Monte Carlo simulations
-    print(f"\n\nRunning {n_mc_sims} Monte Carlo simulations...")
-
-    mc_data = np.load('data/simulated/monte_carlo_outcomes.npz')
-    mc_outcomes = mc_data['outcomes'][:n_mc_sims]  # Use first n_mc_sims
-
-    mc_deltas = {name: [] for name in feature_sets if name != 'market_only'}
-
-    for sim_idx in range(n_mc_sims):
-        if (sim_idx + 1) % 100 == 0:
-            print(f"  Simulation {sim_idx + 1}/{n_mc_sims}")
-
-        # Build dataset for this simulation
-        outcomes_sim = mc_outcomes[sim_idx]
-        team_histories_sim = build_team_histories(games, outcomes_sim)
-        dataset_sim = build_dataset(games, outcomes_sim, team_histories_sim)
-
-        # Run CV
-        results_sim = expanding_walk_forward_cv(dataset_sim, feature_sets, n_folds=5)
-
-        # Compute metrics
-        metrics_sim = {}
-        for name in feature_sets:
-            metrics_sim[name] = compute_metrics(
-                results_sim[name]['y_true'],
-                results_sim[name]['y_pred']
-            )
-
-        # Store deltas
-        baseline_ll_sim = metrics_sim['market_only']['log_loss']
-        for name in mc_deltas:
-            delta = metrics_sim[name]['log_loss'] - baseline_ll_sim
-            mc_deltas[name].append(delta)
-
-    print("\n✓ Monte Carlo complete")
-
-    # Compile results
-    results = {
-        'real': {
-            'metrics': metrics_real,
-            'baseline_ll': baseline_ll,
-            'deltas': {name: metrics_real[name]['log_loss'] - baseline_ll
-                      for name in feature_sets if name != 'market_only'}
-        },
-        'mc': {
-            'deltas': mc_deltas,
-            'percentiles': {}
-        }
+def features(R, home_win):
+    """Feature matrix dict and target y for one outcome history."""
+    res5, p5 = team_view(R, home_win, R['prev_idx'], R['prev_home'])
+    resid5 = res5 - p5
+    f = {
+        'prev_1_residual': resid5[:, 0],
+        'prev_3_residual': np.nanmean(resid5[:, :3], axis=1),
+        'prev_5_residual': np.nanmean(resid5, axis=1),
+        'prev_win': res5[:, 0],
     }
+    resh, _ = team_view(R, home_win, R['hist_idx'], R['hist_home'])
+    last = resh[:, :1]
+    same = (resh == last)
+    # streak = count of leading equal results
+    run = np.cumprod(np.where(np.isnan(resh), False, same), axis=1).sum(axis=1)
+    f['streak_length'] = np.where(last[:, 0] == 1, run, -run)
 
-    # Compute percentiles
-    for name in mc_deltas:
-        mc_vals = np.array(mc_deltas[name])
-        real_delta = results['real']['deltas'][name]
-        percentile = (mc_vals < real_delta).mean() * 100
+    hw = home_win[R['game']].astype(float)
+    y = np.where(R['is_home'], hw, 1 - hw)
+    return f, y
 
-        results['mc']['percentiles'][name] = {
-            'real_delta': real_delta,
-            'mc_mean': mc_vals.mean(),
-            'mc_std': mc_vals.std(),
-            'percentile': percentile,
-            'ci_lower': np.percentile(mc_vals, 2.5),
-            'ci_upper': np.percentile(mc_vals, 97.5)
+
+def fit_offset_logit(X, y, offset, iters=25):
+    """Newton-Raphson for logistic regression with fixed offset (no intercept)."""
+    beta = np.zeros(X.shape[1])
+    for _ in range(iters):
+        eta = offset + X @ beta
+        mu = 1 / (1 + np.exp(-eta))
+        W = mu * (1 - mu)
+        g = X.T @ (y - mu)
+        H = (X * W[:, None]).T @ X + 1e-8 * np.eye(X.shape[1])
+        step = np.linalg.solve(H, g)
+        beta += step
+        if np.max(np.abs(step)) < 1e-9:
+            break
+    return beta
+
+
+def log_loss(y, q):
+    q = np.clip(q, EPS, 1 - EPS)
+    return -np.mean(y * np.log(q) + (1 - y) * np.log(1 - q))
+
+
+def brier(y, q):
+    return np.mean((y - q) ** 2)
+
+
+def evaluate(R, home_win):
+    """Out-of-sample log loss / Brier for market-only and each feature set."""
+    f, y = features(R, home_win)
+    p = R['p']
+    offset = np.log(np.clip(p, EPS, 1 - EPS) / np.clip(1 - p, EPS, 1))
+    n = len(y)
+    block = n // (N_FOLDS + 1)
+    test_mask = np.zeros(n, dtype=bool)
+    preds = {name: np.full(n, np.nan) for name in FEATURE_SETS}
+
+    for k in range(N_FOLDS):
+        tr_end = block * (k + 1)
+        te_end = n if k == N_FOLDS - 1 else tr_end + block
+        tr, te = slice(0, tr_end), slice(tr_end, te_end)
+        test_mask[te] = True
+        for name, cols in FEATURE_SETS.items():
+            X = np.column_stack([f[c] for c in cols])
+            beta = fit_offset_logit(X[tr], y[tr], offset[tr])
+            eta = offset[te] + X[te] @ beta
+            preds[name][te] = 1 / (1 + np.exp(-eta))
+
+    yt, pt = y[test_mask], p[test_mask]
+    out = {'market_only': {'log_loss': log_loss(yt, pt), 'brier': brier(yt, pt)}}
+    for name in FEATURE_SETS:
+        q = preds[name][test_mask]
+        out[name] = {'log_loss': log_loss(yt, q), 'brier': brier(yt, q)}
+    return out
+
+
+def power_check(R, home_win, betas=(0.0, 0.25, 0.5, 1.0), seed=0):
+    """
+    Sanity check that the pipeline can detect a real effect. Plant an effect of
+    size beta on the last-game residual into synthetic outcomes, then measure
+    the out-of-sample improvement the '+ last game' model finds.
+    """
+    f, _ = features(R, home_win)
+    p = R['p']
+    offset = np.log(p / (1 - p))
+    X = f['prev_1_residual'][:, None]
+    rng = np.random.default_rng(seed)
+    n = len(p)
+    block = n // (N_FOLDS + 1)
+    out = {}
+    for b_true in betas:
+        y = (rng.random(n) < 1 / (1 + np.exp(-(offset + b_true * X[:, 0])))).astype(float)
+        mask = np.zeros(n, dtype=bool)
+        q = np.full(n, np.nan)
+        for k in range(N_FOLDS):
+            tr_end = block * (k + 1)
+            te_end = n if k == N_FOLDS - 1 else tr_end + block
+            tr, te = slice(0, tr_end), slice(tr_end, te_end)
+            mask[te] = True
+            beta = fit_offset_logit(X[tr], y[tr], offset[tr])
+            q[te] = 1 / (1 + np.exp(-(offset[te] + X[te] @ beta)))
+        out[str(b_true)] = {
+            'fitted_beta': float(beta[0]),
+            'log_loss_delta': float(log_loss(y[mask], q[mask]) - log_loss(y[mask], p[mask])),
         }
+    return out
 
-    return results
+
+def summarize(real, dist):
+    dist = np.asarray(dist)
+    return {
+        'real': float(real),
+        'mc_mean': float(dist.mean()),
+        'mc_std': float(dist.std()),
+        'ci_lower': float(np.percentile(dist, 2.5)),
+        'ci_upper': float(np.percentile(dist, 97.5)),
+        'percentile': float((dist < real).mean() * 100),
+        'p_two_sided': float(2 * min((dist <= real).mean(), (dist >= real).mean())),
+    }
 
 
 def main():
-    """Run market vs history experiment."""
-    output_dir = Path('output/analysis')
-    output_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path('output/analysis')
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load data
-    games, mc_outcomes = load_data()
+    games, mc = load_data()
+    R = build_rows(games)
+    y_real = np.array([int(g['home_win']) for g in games])
+    print(f"Team-game rows with history: {len(R['game'])}")
 
-    # Run experiment with 1000 MC sims for development
-    results = run_experiment(games, mc_outcomes, n_mc_sims=1000)
+    real = evaluate(R, y_real)
+    base = real['market_only']
+    print("\nReal NFL, out of sample:")
+    for name, m in real.items():
+        print(f"  {name:12s} log_loss={m['log_loss']:.5f}  brier={m['brier']:.5f}  "
+              f"Δll={m['log_loss'] - base['log_loss']:+.5f}")
 
-    # Print summary
-    print(f"\n{'='*70}")
-    print("SUMMARY")
-    print(f"{'='*70}\n")
+    n_sims = min(N_SIMS, mc.shape[0])
+    d_ll = {name: np.zeros(n_sims) for name in FEATURE_SETS}
+    d_br = {name: np.zeros(n_sims) for name in FEATURE_SETS}
+    for m in range(n_sims):
+        if (m + 1) % 1000 == 0:
+            print(f"  simulation {m + 1}/{n_sims}")
+        ev = evaluate(R, mc[m])
+        for name in FEATURE_SETS:
+            d_ll[name][m] = ev[name]['log_loss'] - ev['market_only']['log_loss']
+            d_br[name][m] = ev[name]['brier'] - ev['market_only']['brier']
 
-    for name, stats in results['mc']['percentiles'].items():
-        print(f"{name}:")
-        print(f"  Real Δ log loss: {stats['real_delta']:+.4f}")
-        print(f"  MC mean:         {stats['mc_mean']:+.4f} ± {stats['mc_std']:.4f}")
-        print(f"  95% CI:          [{stats['ci_lower']:+.4f}, {stats['ci_upper']:+.4f}]")
-        print(f"  Percentile:      {stats['percentile']:.1f}%")
-        print()
+    results = {'n_sims': n_sims, 'n_rows': int(len(R['game'])),
+               'real_metrics': real, 'log_loss_delta': {}, 'brier_delta': {}}
+    print("\nΔ log loss vs market alone (negative = history helps):")
+    for name in FEATURE_SETS:
+        rl = real[name]['log_loss'] - base['log_loss']
+        rb = real[name]['brier'] - base['brier']
+        results['log_loss_delta'][name] = summarize(rl, d_ll[name])
+        results['brier_delta'][name] = summarize(rb, d_br[name])
+        s = results['log_loss_delta'][name]
+        print(f"  {name:12s} real={rl:+.5f}  chance 95%=[{s['ci_lower']:+.5f}, {s['ci_upper']:+.5f}]  "
+              f"pct={s['percentile']:.1f}")
 
-    # Save results
-    results_path = output_dir / 'market_vs_history_results.json'
+    results['power_check'] = power_check(R, y_real)
+    print("\nPower check (planted effect on last-game residual):")
+    for b, v in results['power_check'].items():
+        print(f"  beta={b}: fitted={v['fitted_beta']:+.2f}  Δ log loss={v['log_loss_delta']:+.5f}")
 
-    # Convert numpy arrays to lists for JSON
-    results_to_save = {
-        'real': results['real'],
-        'mc': {
-            'percentiles': results['mc']['percentiles'],
-            'deltas_summary': {
-                name: {
-                    'mean': float(np.mean(deltas)),
-                    'std': float(np.std(deltas)),
-                    'min': float(np.min(deltas)),
-                    'max': float(np.max(deltas))
-                }
-                for name, deltas in results['mc']['deltas'].items()
-            }
-        }
-    }
-
-    with open(results_path, 'w') as f:
-        json.dump(results_to_save, f, indent=2)
-
-    print(f"Saved results: {results_path}")
-    print("\n✓ Experiment complete!")
+    with open(out_dir / 'market_vs_history_results.json', 'w') as f:
+        json.dump(results, f, indent=2)
+    print(f"\nSaved: {out_dir / 'market_vs_history_results.json'}")
 
 
 if __name__ == '__main__':

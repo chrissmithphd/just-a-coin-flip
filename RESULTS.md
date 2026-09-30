@@ -17,7 +17,7 @@ Momentum is real (raw win/loss):
 - ✗ Raw team autocorrelation elevated at lags 1 and 4 (99.7th percentile, $p \le 0.007$)
 
 The market already accounts for it:
-- ✓ Well-calibrated probabilities (0/19 bins outside CI)
+- ✓ Well-calibrated probabilities (0/15 bins outside CI)
 - ✓ Upset frequency, overall and by bin (76.7th percentile; 0/8 outside CI)
 - ✓ Residual autocorrelation (market line subtracted) not significant at any lag — team lag-1 at 80.0th percentile ($p = 0.40$)
 - ✓ Recent history gives no out-of-sample predictive improvement (walk-forward)
@@ -34,13 +34,13 @@ The market already accounts for it:
 
 ### Results
 
-- **All 19 probability bins** fell within the 95% confidence interval from Monte Carlo
+- **All 15 probability bins** (5% bins, with the sparse extremes merged so each bin has ≥50 games) fell within the 95% confidence interval from Monte Carlo
 - No systematic miscalibration detected
 - Markets are well-calibrated: actual outcomes match probabilistic expectations
 
 | Finding | Value |
 |---------|-------|
-| Bins tested | 19 |
+| Bins tested | 15 |
 | Bins outside 95% CI | 0 (0%) |
 | Conclusion | ✓ **Consistent with Bernoulli model** |
 
@@ -152,7 +152,7 @@ After a loss, teams do marginally worse than the market expected — borderline 
 
 | Test | Statistic | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ | Beats model? |
 |------|-----------|----------|---------|--------|------------|---------------|------------|
-| **Calibration** | Bins outside CI | 0 / 19 | ~1 / 19 | — | — | — | No |
+| **Calibration** | Bins outside CI | 0 / 15 | ~0.75 / 15 | — | — | — | No |
 | **Total upsets** | Count | 997 | 978.5 | [930, 1027] | 76.7% | — | No |
 | **Upset bins** | Outside CI | 0 / 8 | ~0.4 / 8 | — | — | — | No |
 | **Win-streak count** *(raw)* | Count | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | streaks real |
@@ -160,7 +160,7 @@ After a loss, teams do marginally worse than the market expected — borderline 
 | **Autocorr lag 1** *(raw)* | Team avg | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | streaks real |
 | **Autocorr lag 1** *(residual)* | Team avg | 0.012 | 0.000 | [−0.029, 0.030] | 80.0% | 0.401 | No |
 | **Autocorr lag 4** *(residual)* | Team avg | 0.022 | 0.000 | [−0.032, 0.033] | 90.9% | 0.182 | No |
-| **Recent history** | OOS log loss | worse | ≈ chance | — | — | — | No |
+| **Recent history** | OOS Δ log loss | +0.00001 to +0.0003 | ≈ 0 | ≈ ±0.001 | 5–70% | — | No |
 
 **Overall:** Raw win/loss sequences are genuinely streakier than the coin-flip model (streak counts and raw autocorrelation). But once each game's market probability is removed, the residual autocorrelation is not significant at any lag, and recent history provides no out-of-sample edge. The streaks are real; the market has already priced them in.
 

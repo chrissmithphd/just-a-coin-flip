@@ -58,13 +58,13 @@ $$
 P(Y_i = 1 \mid p_i = p) = p
 $$
 
-We bin games by $p_i$ (in 5% increments) and compare the actual home win rate within each bin to its expected value under the Bernoulli model, using the Monte Carlo distribution to establish confidence intervals.
+We group games by $p_i$ (in 5% increments, merging the rare extreme groups so every group has at least 50 games) and compare the actual home win rate within each bin to its expected value under the Bernoulli model, using the Monte Carlo distribution to establish confidence intervals.
 
 ![Calibration Analysis](output/analysis/calibration.png)
 
-*Figure 2: **Left:** Calibration curve. Each bubble represents a probability bin; bubble size indicates sample size. The red diagonal is perfect calibration. Real NFL outcomes (dark red) fall within the 95% confidence interval (shaded blue) from 10,000 Bernoulli simulations for all 19 bins. **Right:** Calibration residuals (actual – expected). No bin deviates significantly; markets are well-calibrated.*
+*Figure 2: **Left:** each bubble is a group of games with similar odds (bigger bubble = more games); the dashed diagonal is perfect calibration. Real results track the diagonal and stay inside the blue band that weighted coin flips produce. **Right:** the gap between actual and expected win rate in each group, with the gray bar showing how big a gap chance alone produces for a group that size. Every real gap sits inside its gray bar. Groups at the extremes are wider ("<0.20", "≥0.85") because very lopsided games are rare, and a group of only a handful of games would show large gaps from chance alone.*
 
-**Result:** 0 of 19 probability bins fall outside the 95% confidence interval. Markets are well-calibrated across the full range of pregame probabilities — no systematic overestimation or underestimation of win likelihood.
+**Result:** 0 of 15 probability groups fall outside the 95% confidence interval. Markets are well-calibrated across the full range of pregame probabilities — no systematic overestimation or underestimation of win likelihood.
 
 The **average vig-adjusted home win probability** was 56.6%, and **actual home win rate** was 55.8%. The difference (–0.8 percentage points) is statistically consistent with sampling variation (Monte Carlo percentile: 18.3%).
 
@@ -159,21 +159,21 @@ We resist calling the clustering "momentum." The data establish only that real r
 
 ### Measured against the odds, the persistence disappears
 
-A streak is only useful to a bettor if it tells you something the **odds don't already reflect**. So instead of asking "did the team win?", we score each game against its own implied win probability: did the team win *more often than that game's odds implied*? Then we check whether beating the odds in recent games says anything about beating the odds in the next one.
+A streak is only useful to a bettor if it tells you something the **odds don't already reflect**. So we look at every pair of back-to-back games for the same team — 5,849 of them — and ask two questions about the second game: how often did the team win, and how often did *that game's closing odds* say it would win?
 
-![Streaks versus the market](output/analysis/team_autocorrelation.png)
+![After a win vs after a loss](output/analysis/team_after_win_loss.png)
 
-*Figure 7: A team's game-to-game consistency, measured two ways, against 10,000 random histories. **Left — raw wins and losses:** the real NFL (red) sits at the far right, reflecting the extra clustering from the previous section. **Right — performance relative to each game's implied win probability:** the real NFL falls back into the middle of the random pack. Once you account for what the odds already expected, the apparent pattern is gone.*
+*Figure 7: **Left:** after a win, teams won their next game 54.7% of the time; after a loss, 45.3%. That's a real difference — but the closing odds for those next games already implied 54.0% and 46.0%. **Right:** the part the odds didn't anticipate (actual minus implied, after a win versus after a loss) is +1.4 points in the real NFL, compared with the range produced by 10,000 random histories. It sits inside the normal range.*
 
-| Lag | Raw wins/losses (percentile) | Relative to the odds (percentile) |
-|----|----|----|
-| 1 game apart | 99.7% | 80.0% |
-| 2 games apart | 23.1% | 3.8% |
-| 3 games apart | 87.5% | 25.7% |
-| 4 games apart | 99.7% | 90.9% |
-| 5 games apart | 95.8% | 67.1% |
+| Next game | After a win | After a loss |
+|---|---|---|
+| Actual win rate | 54.7% | 45.3% |
+| Win chance implied by that game's closing odds | 54.0% | 46.0% |
+| **Actual minus implied** | **+0.7 pts** | **−0.7 pts** |
 
-**What this shows:** the raw game-to-game correlation is statistically unusual but small in size (about 0.06, versus 0.02 in the random histories) — the same modest clustering as the run-count result, not a strong momentum signal. And it is not something the market missed. Once each result is scored against the odds it faced, that positive correlation goes away: across the five gaps the values scatter on both sides of the random average (one is even unusually *low*) rather than lining up above it, so there is no consistent leftover persistence. The extra streakiness lives *inside* what the odds already say, not on top of it.
+**What this shows:** yes, a team that just won is more likely to win its next game — by about 9 percentage points compared with a team that just lost. But the odds for that next game already account for almost all of it (8 of those 9 points). What's left, about 1.4 points between the two situations, is well within what pure chance produces (random histories range from about −2.3 to +2.4). A bettor who backs teams coming off a win is mostly paying for information the odds already contain.
+
+We can't tell from this data *why* the next game's odds differ after a win — it could be the market reacting to the result, or simply that teams that win are, on average, stronger teams facing favorable matchups. Either way, the difference is in the odds you're offered, not hidden from them.
 
 ### And it doesn't help predict the next game
 
@@ -183,9 +183,9 @@ We trained only on earlier games and predicted later ones (never the reverse), c
 
 ![Market vs History](output/analysis/market_vs_history.png)
 
-*Figure 8: How much each extra ingredient changes prediction accuracy versus using the odds alone (lower is better; brown bars are the real NFL, gray bands are the range from pure chance). Every version of "add recent history" lands in the chance range — and slightly worse than the odds alone, because the extra detail mostly adds noise.*
+*Figure 8: How much adding each kind of recent history changes prediction error compared with using the closing odds alone. Below zero (green) would mean history helps. The red dots are the real NFL; the gray bars are the range that pure chance produces when the same model is fit to 10,000 random histories. Every real result is at or just above zero and inside the chance range: recent form did not make predictions better. For scale, we planted a known effect into simulated data as a check: if winning a toss-up game gave a team a hidden 3-point boost in its next game, this test would show about −1.3; a 6-point boost would show about −7. Nothing like that appears in the real NFL.*
 
-**What this shows:** these recent-history features — last game, recent form, streak length — do not improve prediction beyond the closing odds. That is a specific, practical result: the obvious things a bettor might read into a team's recent games are already in the odds. It does not prove that *no* signal could ever beat the odds; only that these did not.
+**What this shows:** these recent-history features — last game, recent form, streak length — do not improve prediction beyond the closing odds. The change in prediction error is between 0.00001 and 0.0003 in log loss, effectively zero. That is a specific, practical result: the obvious things a bettor might read into a team's recent games are already in the odds. It does not prove that *no* signal could ever beat the odds; only that these did not.
 
 The wins and losses matter. They're just not telling us anything about the *next* game that the odds don't already say.
 
@@ -200,17 +200,16 @@ The "Departs from coin-flip model?" column marks whether the real NFL differs fr
 | Test | Real NFL | MC mean | 95% CI | Percentile | Two-sided $p$ | Departs from model? |
 |------|----------|---------|--------|------------|---------------|------------|
 | **Total home wins** | 1,644 | 1,666 | [1,617, 1,716] | 18.3% | — | No |
-| **Calibration bins** | 0 / 19 outside CI | ~1 / 19 | — | — | — | No |
+| **Calibration bins** | 0 / 15 outside CI | ~0.75 / 15 | — | — | — | No |
 | **Total upsets** | 997 | 978.5 | [930, 1,027] | 76.7% | — | No |
 | **Upset bins** | 0 / 8 outside CI | ~0.4 / 8 | — | — | — | No |
 | **Win streak count** *(raw)* | 1,338 | 1,408 | [1,369, 1,446] | 0.0% | <0.001 | Yes, small |
 | **Loss streak count** *(raw)* | 1,346 | 1,410 | [1,372, 1,449] | 0.1% | 0.001 | Yes, small |
-| **Autocorr lag 1** *(raw)* | 0.059 | 0.016 | [−0.014, 0.047] | 99.7% | 0.007 | Yes, small |
-| **Autocorr lag 1** *(vs odds)* | 0.012 | 0.000 | [−0.029, 0.030] | 80.0% | 0.401 | No |
-| **Autocorr lag 4** *(vs odds)* | 0.022 | 0.000 | [−0.032, 0.033] | 90.9% | 0.182 | No |
-| **Recent history (out-of-sample)** | worse | ≈ chance | — | — | — | No |
+| **Win rate after a win − after a loss** *(raw)* | +9.5 pts | +4.8 pts | [+2.2, +7.5] | >99.9% | 0.001 | Yes, small |
+| **Same gap, measured against the next game's odds** | +1.4 pts | 0.0 pts | [−2.3, +2.4] | 88.4% | 0.233 | No |
+| **Recent history added to the odds** *(out-of-sample, change in log loss)* | +0.00001 to +0.0003 | ≈ 0 | chance range ≈ ±0.001 | 5–70% | — | No |
 
-**Verdict:** Raw win/loss sequences are modestly streakier than weighted coin flips (top rows) — a clear but small departure. Once each result is scored against its own game's implied win probability, that extra clustering is no longer visible (the *vs odds* rows), and recent-history features provide no out-of-sample improvement over the closing odds. Whatever the streaks contain, the odds appear to reflect it.
+**Verdict:** Raw win/loss sequences are modestly streakier than weighted coin flips (top rows) — a clear but small departure. Once each result is scored against its own game's implied win probability, that extra clustering is no longer visible (the *measured against the odds* row), and recent-history features provide no out-of-sample improvement over the closing odds. Whatever the streaks contain, the odds appear to reflect it.
 
 ---
 
@@ -226,10 +225,10 @@ $$
 - A small amount of extra clustering. Real NFL runs of wins and losses are about 5% fewer than the weighted-coin model produces — runs lasting about 2.2 games on average instead of 2.1. It is a clear but modest effect, not a dramatic hot hand, and we can't attribute it to any specific cause.
 
 **What the market already reflects:**
-- ✓ Well-calibrated probabilities (0/19 calibration bins outside CI)
+- ✓ Well-calibrated probabilities (0/15 calibration groups outside CI)
 - ✓ Upsets at the predicted rate (76.7th percentile; 0/8 bins outside CI)
-- ✓ Scored against each game's own implied win probability, the extra clustering is no longer detectable (not significant at any lag)
-- ✓ Recent history gives no out-of-sample predictive edge (walk-forward test)
+- ✓ Teams do win more often after a win, but the next game's closing odds already account for about 8 of the 9 extra points; the remaining 1.4 points is within the range chance produces
+- ✓ Adding recent history to the odds does not improve out-of-sample prediction (walk-forward test), even though the same test detects a planted effect as small as a 3-point boost
 
 **Why both can be true.** A team's raw record and the odds it is given both reflect the same underlying strength, so raw win/loss sequences naturally look clustered. But when we measure each result against the odds it actually faced, the extra clustering is already contained in those odds — there is nothing left over to predict the next result.
 

@@ -228,6 +228,98 @@ def analyze_streaks(team_index, y_real, mc_outcomes):
     }
 
 
+# --- after a win vs after a loss (pooled, percentage points) -----------------
+
+def analyze_after_win_loss(games, y_real, p_home, mc_outcomes):
+    """
+    Pool every consecutive pair of games for the same team. For the second game
+    of each pair, compare the actual win rate with the win probability implied
+    by that game's closing odds, split by whether the team won or lost the
+    first game. Pooling (rather than averaging per team) avoids a small-sample
+    ratio bias in the per-team version.
+    """
+    order = defaultdict(list)
+    for i, g in enumerate(games):
+        order[g['home_team']].append((i, True))
+        order[g['away_team']].append((i, False))
+    P, N, HP, HN = [], [], [], []
+    for lst in order.values():
+        idx = [a for a, _ in lst]
+        ih = [b for _, b in lst]
+        P += idx[:-1]; N += idx[1:]; HP += ih[:-1]; HN += ih[1:]
+    P, N, HP, HN = map(np.array, (P, N, HP, HN))
+    p_next = np.where(HN, p_home[N], 1 - p_home[N])
+
+    def stats(Y):
+        prev = np.where(HP, Y[:, P], 1 - Y[:, P]).astype(float)
+        nxt = np.where(HN, Y[:, N], 1 - Y[:, N]).astype(float)
+        w, l = prev.sum(1), (1 - prev).sum(1)
+        out = {
+            'win_rate_after_win': (prev * nxt).sum(1) / w,
+            'win_rate_after_loss': ((1 - prev) * nxt).sum(1) / l,
+            'implied_after_win': (prev * p_next).sum(1) / w,
+            'implied_after_loss': ((1 - prev) * p_next).sum(1) / l,
+        }
+        out['beat_odds_after_win'] = out['win_rate_after_win'] - out['implied_after_win']
+        out['beat_odds_after_loss'] = out['win_rate_after_loss'] - out['implied_after_loss']
+        out['raw_gap'] = out['win_rate_after_win'] - out['win_rate_after_loss']
+        out['beat_odds_gap'] = out['beat_odds_after_win'] - out['beat_odds_after_loss']
+        return out
+
+    real = stats(y_real[None, :])
+    null = stats(mc_outcomes)
+    results = {k: summarize(real[k][0], null[k]) for k in real}
+    results['n_pairs'] = int(len(P))
+    results['_null_raw_gap'] = null['raw_gap']
+    results['_null_beat_odds_gap'] = null['beat_odds_gap']
+    return results
+
+
+def plot_after_win_loss(awl, output_path):
+    """Left: actual vs implied next-game win rate. Right: leftover gap vs chance."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6),
+                                   gridspec_kw={'width_ratios': [1, 1.2]})
+
+    x = np.arange(2)
+    actual = [awl['win_rate_after_win']['real'] * 100, awl['win_rate_after_loss']['real'] * 100]
+    implied = [awl['implied_after_win']['real'] * 100, awl['implied_after_loss']['real'] * 100]
+    ax1.bar(x - 0.2, actual, 0.4, color='darkred', edgecolor='black', label='Actual win rate')
+    ax1.bar(x + 0.2, implied, 0.4, color='steelblue', edgecolor='black',
+            label="Win chance implied by that game's closing odds")
+    for xi, a, b in zip(x, actual, implied):
+        ax1.text(xi - 0.2, a + 0.6, f'{a:.1f}%', ha='center', fontsize=11, fontweight='bold')
+        ax1.text(xi + 0.2, b + 0.6, f'{b:.1f}%', ha='center', fontsize=11)
+    ax1.axhline(50, color='black', linestyle=':', linewidth=1, alpha=0.6)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(['Game after a WIN', 'Game after a LOSS'], fontsize=12)
+    ax1.set_ylim(35, 62)
+    ax1.set_ylabel('Next-game win rate (%)', fontsize=12, fontweight='bold')
+    ax1.set_title('Teams win more after a win —\nbut the next game's odds already reflect it',
+                  fontsize=12, fontweight='bold')
+    ax1.legend(fontsize=10, loc='upper right')
+    ax1.grid(axis='y', alpha=0.3)
+
+    null = awl['_null_beat_odds_gap'] * 100
+    real = awl['beat_odds_gap']['real'] * 100
+    ax2.hist(null, bins=50, color='steelblue', edgecolor='black', alpha=0.7,
+             label='10,000 random histories')
+    ax2.axvline(real, color='darkred', linewidth=3,
+                label=f'Real NFL: {real:+.1f} pts')
+    ax2.axvline(0, color='black', linestyle=':', linewidth=1)
+    ax2.set_xlabel('Beat-the-odds after a win  minus  after a loss (percentage points)',
+                   fontsize=11, fontweight='bold')
+    ax2.set_ylabel('Number of random histories', fontsize=12, fontweight='bold')
+    ax2.set_title('What\'s left over after the odds: an ordinary amount',
+                  fontsize=12, fontweight='bold')
+    ax2.legend(fontsize=10)
+    ax2.grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved: {output_path}")
+
+
 # --- plots ------------------------------------------------------------------
 
 def plot_raw_vs_residual(ac_results, output_path):
@@ -372,9 +464,13 @@ def main():
     print("Analyzing streaks (per-league null)...")
     streak_results = analyze_streaks(team_index, y_real, mc_outcomes)
 
+    print("Analyzing next game after a win vs a loss...")
+    awl = analyze_after_win_loss(games, y_real, p_home, mc_outcomes)
+
     plot_raw_vs_residual(ac_results, output_dir / 'team_autocorrelation.png')
     plot_autocorr_by_lag(ac_results, output_dir / 'team_autocorr_by_lag.png')
     plot_max_streaks(streak_results, output_dir / 'team_max_streaks.png')
+    plot_after_win_loss(awl, output_dir / 'team_after_win_loss.png')
 
     print_summary(ac_results, streak_results)
 
@@ -385,6 +481,7 @@ def main():
         'autocorrelation_raw': clean(ac_results['raw']),
         'autocorrelation_residual': clean(ac_results['residual']),
         'streaks': {k: v for k, v in streak_results.items() if not k.startswith('_')},
+        'after_win_loss': {k: v for k, v in awl.items() if not k.startswith('_')},
     }
     with open(output_dir / 'team_timeseries_results.json', 'w') as f:
         json.dump(payload, f, indent=2)
