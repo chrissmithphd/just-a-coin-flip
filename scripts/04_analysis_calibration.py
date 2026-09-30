@@ -155,7 +155,12 @@ def plot_calibration(results, output_path):
     ax1.set_ylabel('Actual Win Rate', fontsize=13, fontweight='bold')
     ax1.set_title('Calibration: Real NFL vs Bernoulli Model\n(bubble size = # games)',
                   fontsize=14, fontweight='bold')
-    ax1.legend(loc='upper left', fontsize=10)
+    leg = ax1.legend(loc='upper left', fontsize=10)
+    # Bubble sizes encode game counts; keep the legend marker a normal size so it
+    # isn't mistaken for a data point.
+    for h in leg.legend_handles:
+        if hasattr(h, 'set_sizes'):
+            h.set_sizes([60])
     ax1.grid(alpha=0.3)
     ax1.set_xlim(0, 1)
     ax1.set_ylim(0, 1)
